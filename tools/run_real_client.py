@@ -97,7 +97,7 @@ def main():
         return out
 
     props = ['-Dcharlod.check=' + mode]
-    for key in ('seed', 'seeds', 'cx', 'cz', 'seconds', 'rd', 'then', 'fresh', 'world', 'estimateonly', 'noseed', 'distance', 'threads'):
+    for key in ('seed', 'seeds', 'cx', 'cz', 'seconds', 'rd', 'then', 'fresh', 'world', 'estimateonly', 'noseed', 'distance', 'threads', 'flat'):
         v = arg(key)
         if v is not None:
             props.append(f'-Dcharlod.{key}={v}')

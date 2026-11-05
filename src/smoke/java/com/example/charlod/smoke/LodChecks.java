@@ -134,7 +134,7 @@ public final class LodChecks {
                 rules.getRule(GameRules.RULE_DOMOBSPAWNING).set(false, null);
                 rules.getRule(GameRules.RULE_DAYLIGHT).set(false, null);
                 mc.createWorldOpenFlows().createFreshLevel(WORLD, new LevelSettings(WORLD, GameType.CREATIVE, false, Difficulty.PEACEFUL, true, rules, WorldDataConfiguration.DEFAULT),
-                        new WorldOptions(SEED, true, false), access -> access.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(WorldPresets.NORMAL).value().createWorldDimensions());
+                        new WorldOptions(SEED, true, false), access -> access.registryOrThrow(Registries.WORLD_PRESET).getHolderOrThrow(Boolean.getBoolean("charlod.flat") ? WorldPresets.FLAT : WorldPresets.NORMAL).value().createWorldDimensions());
             }
             return;
         }
@@ -392,6 +392,17 @@ public final class LodChecks {
                     p.getAbilities().flying = true;
                     p.onUpdateAbilities();
                     p.connection.teleport(x, y, z, yaw, pitch);
+                });
+                waitTicks = 10;
+            }
+            case "up" -> { // up dy yaw pitch: straight up from where you are, from the ground there
+                double dy = Double.parseDouble(s[1]);
+                float yaw = Float.parseFloat(s[2]), pitch = Float.parseFloat(s[3]);
+                server.execute(() -> {
+                    ServerPlayer p = server.getPlayerList().getPlayers().get(0);
+                    p.getAbilities().flying = true;
+                    p.onUpdateAbilities();
+                    p.connection.teleport(p.getX(), p.getY() + dy, p.getZ(), yaw, pitch);
                 });
                 waitTicks = 10;
             }
