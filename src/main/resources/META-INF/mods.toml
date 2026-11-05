@@ -1,0 +1,29 @@
+modLoader="javafml"
+loaderVersion="[47,)"
+license="MIT"
+
+[[mods]]
+authors="Char"
+modId="charlod"
+version="${file.jarVersion}"
+displayName="{C} Char's Far View"
+# PC side mod: nobody else needs it, and you can join any server with it.
+displayTest="IGNORE_ALL_VERSION"
+description='''
+See terrain far past your render distance, made for weak laptops.
+Uses chunks you have already generated or visited, keeps them in a small cache and draws them with very little work.
+'''
+
+[[dependencies.charlod]]
+modId="forge"
+mandatory=true
+versionRange="[47,)"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.charlod]]
+modId="minecraft"
+mandatory=true
+versionRange="[1.20.1,1.21)"
+ordering="NONE"
+side="BOTH"
