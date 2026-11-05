@@ -127,7 +127,11 @@ public final class GreedyMesher {
                         if (bottomJ != bottom) break;
                         b++;
                     }
-                    side(out, dir, line, a, b, height, bottom, ColumnSampler.mix(colour & TileData.RGB, top[i] & TileData.RGB, sideBlend(level)), flags, shadeOf, level);
+                    int nx = alongX ? line + sign : a, nz = alongX ? a : line + sign;
+                    boolean outer = nx < 0 || nz < 0 || nx >= n || nz >= n || h[LodMath.cell(nx, nz)] == LodMath.NO_DATA;
+                    // A tile's outer skirt only ever shows through the thinnest crack beside another tile: in the top's own colour that crack can't be seen.
+                    if (outer) side(out, dir, line, a, b, height, bottom, top[i] & TileData.RGB, flags, shade.up, 0, true);
+                    else side(out, dir, line, a, b, height, bottom, ColumnSampler.mix(colour & TileData.RGB, top[i] & TileData.RGB, sideBlend(level)), flags, shadeOf, level, false);
                     a = b;
                 }
             }
@@ -172,12 +176,12 @@ public final class GreedyMesher {
         track(m, y);
     }
 
-    private static void side(Mesh m, int dir, int line, int a, int b, int top, int bottom, int colour, int flags, float shade, int level) {
+    private static void side(Mesh m, int dir, int line, int a, int b, int top, int bottom, int colour, int flags, float shade, int level, boolean outer) {
         m.ensure(4);
         int high = packed(colour | flags, shade);
         // Darker towards the foot: a cheap shadow that makes cliffs and clumps of trees stand out from the ground.
         int drop = top - bottom;
-        float foot = (flags & TileData.F_FOLIAGE) != 0 ? Math.max(0.62f, 1f - drop * 0.045f) : Math.max(level >= 2 ? 0.86f : 0.72f, 1f - drop * 0.02f);
+        float foot = outer ? 1f : (flags & TileData.F_FOLIAGE) != 0 ? Math.max(0.62f, 1f - drop * 0.045f) : Math.max(level >= 2 ? 0.86f : 0.72f, 1f - drop * 0.02f);
         int low = packed(colour | flags, shade * foot);
         switch (dir) {
             case 0 -> { // +x

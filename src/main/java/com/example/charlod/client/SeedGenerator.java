@@ -38,7 +38,7 @@ public final class SeedGenerator {
     // Same threshold the game uses for its own quick idea of the surface.
     private static final double COARSE_SOLID = 0.390625;
     private static final int FINE_BELOW_LEVEL = 3;
-    private static final int MOUNTAIN_Y = 100;
+    private static final int MOUNTAIN_Y = 120;
     // The cheap maths is off by a fairly steady amount locally: measured with the full maths on a sparse grid, every this many columns, then blended across.
     private static final int OFFSET_GRID_NEAR = 4, OFFSET_GRID_FAR = 8;
     private static final int WANT_EXPIRES_MILLIS = 4000;
@@ -274,6 +274,7 @@ public final class SeedGenerator {
             }
             if (stopped) return;
         }
+        int[] mountainExtra = new int[n * n];
         for (int z = 0; z < n; z++) {
             int gz = z / grid;
             float tz = (z - gz * grid) / (float) grid;
@@ -286,8 +287,13 @@ public final class SeedGenerator {
                 float b = offsets[(gz + 1) * gridSize + gx] + (offsets[(gz + 1) * gridSize + gx + 1] - offsets[(gz + 1) * gridSize + gx]) * tx;
                 int g = ground[i] + Math.round(a + (b - a) * tz);
                 if (level < FINE_BELOW_LEVEL && g >= MOUNTAIN_Y) {
-                    int full = SurfaceSearch.fromHint(f, x0 + x * s + s / 2, z0 + z * s + s / 2, minY, maxY, g, 1);
-                    if (full != Integer.MIN_VALUE) g = full;
+                    // Sharp edges matter on near mountains: the full maths on every fourth column, the ones around it take the same correction.
+                    int home = (z & ~1) * n + (x & ~1);
+                    if (i == home) {
+                        int full = SurfaceSearch.fromHint(f, x0 + x * s + s / 2, z0 + z * s + s / 2, minY, maxY, g, 2);
+                        if (full != Integer.MIN_VALUE) mountainExtra[i] = full - g;
+                    }
+                    g += mountainExtra[home];
                 }
                 ground[i] = g;
             }
@@ -430,6 +436,14 @@ public final class SeedGenerator {
             int lx = (k & 1) == 0 ? 3 : 12, lz = (k & 2) == 0 ? 3 : 12;
             int i = lz * 16 + lx;
             short h = real.height[i];
+            if (roofed) {
+                // Under a roof there are many floors, so which one each side picks means little. What matters: is the real floor where the maths says ground ends?
+                if (h == LodMath.NO_DATA || h <= 33 || (real.top[i] & TileData.F_FOLIAGE) != 0) continue;
+                Density solid = new Density(fine, 0.0);
+                int wx = chunkX * 16 + lx, wz = chunkZ * 16 + lz;
+                errors[count++] = solid.at(wx, h - 2, wz) && !solid.at(wx, h + 1, wz) ? 0f : 32f;
+                continue;
+            }
             int est = estimateTop(chunkX * 16 + lx, chunkZ * 16 + lz);
             if (h == LodMath.NO_DATA) {
                 if (est != Integer.MIN_VALUE) errors[count++] = 64f; // the seed says ground, really nothing
