@@ -199,7 +199,11 @@ public final class FarScreen extends Screen {
         });
         y += 19;
         LodWorld w = FarClient.world();
-        String line = w == null ? "Not in a world right now" : w.scanner == null ? "Seen so far: " + w.seenChunksCount() + " chunks. " + w.remote.status : "Reading save files: " + w.scanner.status + ", " + w.scanner.regionsLeft + " regions to go";
+        String line;
+        if (w == null) line = "Not in a world right now";
+        else if (w.scanner == null) line = "Seen " + w.seenChunksCount() + " chunks, " + w.remote.status;
+        else if (w.scanner.regionsLeft == 0) line = "Save files read: all up to date";
+        else line = "Reading save files: " + w.scanner.regionsLeft + " regions to go";
         text(line, W / 2.0, y, 0.75, DIM, 0);
         double by = H - 25;
         pill(20, by, 130, 17, sureRebuild ? "Sure? Click again" : "Rebuild this world", sureRebuild, () -> {

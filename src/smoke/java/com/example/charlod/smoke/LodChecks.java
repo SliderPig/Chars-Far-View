@@ -61,6 +61,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Mod.EventBusSubscriber(modid = CharLod.MODID, value = Dist.CLIENT)
 public final class LodChecks {
     private static final String MODE = System.getProperty("charlod.check", "");
+    private static final boolean SCENES_AFTER = Boolean.getBoolean("charlod.then");
+    private static String mode = MODE;
     private static final long SEED = Long.getLong("charlod.seed", 1L);
     private static final int CENTER_X = Integer.getInteger("charlod.cx", 0), CENTER_Z = Integer.getInteger("charlod.cz", 0);
     private static final int SECONDS = Integer.getInteger("charlod.seconds", 420);
@@ -128,7 +130,7 @@ public final class LodChecks {
             return;
         }
         if (mc.player == null || mc.getSingleplayerServer() == null || mc.getSingleplayerServer().getPlayerList().getPlayers().isEmpty()) return;
-        switch (MODE) {
+        switch (mode) {
             case "survey" -> survey(mc);
             case "pregen" -> pregenClient(mc);
             case "scenes" -> scenes(mc);
@@ -202,7 +204,7 @@ public final class LodChecks {
     private static final AtomicInteger IN_FLIGHT = new AtomicInteger();
     private static volatile long madeChunks;
     private static int ring, ringStep;
-    private static boolean pregenStarted, pregenStop;
+    private static boolean pregenStarted, pregenStop, pregenSaved;
     private static long lastReport;
 
     private static Path progressFile(Minecraft mc) {
@@ -245,12 +247,28 @@ public final class LodChecks {
             pregenStop = true;
             log("time is up");
         }
-        if (pregenStop && IN_FLIGHT.get() == 0) {
+        if (pregenStop && IN_FLIGHT.get() == 0 && !pregenSaved) {
+            pregenSaved = true;
             try {
                 Files.writeString(progressFile(mc), ring + " " + madeChunks);
             } catch (IOException ignored) {
             }
-            quit(mc);
+            if (!SCENES_AFTER) {
+                quit(mc);
+                return;
+            }
+            var server = mc.getSingleplayerServer();
+            server.execute(() -> {
+                log("saving before the scenes");
+                server.saveEverything(false, true, true);
+                log("saved");
+                mc.execute(() -> {
+                    mc.options.framerateLimit().set(260);
+                    mc.options.renderDistance().set(Integer.getInteger("charlod.rd", 10));
+                    FarSettings.enabled = true;
+                    mode = "scenes";
+                });
+            });
         }
     }
 

@@ -102,6 +102,22 @@ final class HoleMask {
         }
     }
 
+    // True when every chunk of this block square is real, so nothing of it would ever show.
+    boolean fullyReal(double minBlockX, double minBlockZ, int size) {
+        if (pixels == null) return false;
+        int x0 = (int) Math.floor(minBlockX) >> 4, z0 = (int) Math.floor(minBlockZ) >> 4;
+        int count = size >> 4;
+        for (int z = 0; z < count; z++) {
+            int mz = z0 + z - originZ;
+            if (mz < 0 || mz >= SIZE) return false;
+            for (int x = 0; x < count; x++) {
+                int mx = x0 + x - originX;
+                if (mx < 0 || mx >= SIZE || pixels.get(mz * SIZE + mx) == 0) return false;
+            }
+        }
+        return true;
+    }
+
     private static double nearest(double cam, double min) {
         return cam < min ? min - cam : cam > min + 16 ? cam - min - 16 : 0;
     }

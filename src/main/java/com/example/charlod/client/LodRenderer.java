@@ -360,6 +360,7 @@ public final class LodRenderer {
             if (t.vao == 0 || !frustum.visible(rx, (float) (t.minY - cy), rz, rx + size, (float) (t.maxY - cy), rz + size)) continue;
             float hx = rx > 0 ? rx : rx + size < 0 ? -(rx + size) : 0, hz = rz > 0 ? rz : rz + size < 0 ? -(rz + size) : 0;
             boolean overlapsHole = hx * hx + hz * hz < (rd + 32f) * (rd + 32f);
+            if (overlapsHole && size <= 256 && mask.fullyReal(wx, wz, size)) continue;
             Program want = overlapsHole ? near : far;
             if (want != current) {
                 current = want;
