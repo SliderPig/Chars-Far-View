@@ -5,6 +5,7 @@ package com.example.charlod.core;
 public final class ColumnSampler {
     private static final float WATER_ALPHA = 0.72f;
     private static final float PLANT_MIX = 0.3f;
+    public static final float SNOW_ON_TREES = 0.55f;
     // Below a roof (the Nether) a surface only counts under this many blocks of open air, so small pockets in the roof don't show.
     private static final int ROOF_AIR_RUN = 4;
     private static final int MAX_WATER_LOOK = 24;
@@ -109,7 +110,15 @@ public final class ColumnSampler {
         if (h.over >= 0) {
             int overFlags = table.flags(h.over);
             int overTop = table.top(h.over, h.biome) & TileData.RGB;
-            top = (overFlags & BlockTable.SNOW_LAYER) != 0 ? overTop : mix(top, overTop, PLANT_MIX);
+            if ((overFlags & BlockTable.SNOW_LAYER) == 0) {
+                top = mix(top, overTop, PLANT_MIX);
+            } else if ((flags & BlockTable.FOLIAGE) != 0) {
+                // Snow on trees is only ever patchy: all white tops over dark sides would sparkle from afar.
+                top = mix(top, overTop, SNOW_ON_TREES);
+                side = mix(side, overTop, SNOW_ON_TREES * 0.5f);
+            } else {
+                top = overTop;
+            }
         }
         out.top[i] = top | tag;
         out.side[i] = side;

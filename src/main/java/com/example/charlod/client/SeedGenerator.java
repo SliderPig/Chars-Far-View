@@ -40,7 +40,7 @@ public final class SeedGenerator {
     private static final int FINE_BELOW_LEVEL = 3;
     private static final int MOUNTAIN_Y = 100;
     // The cheap maths is off by a fairly steady amount locally: measured with the full maths on a sparse grid, every this many columns, then blended across.
-    private static final int OFFSET_GRID = 4;
+    private static final int OFFSET_GRID_NEAR = 4, OFFSET_GRID_FAR = 8;
     private static final int WANT_EXPIRES_MILLIS = 4000;
 
     private final LodWorld world;
@@ -259,12 +259,13 @@ public final class SeedGenerator {
             }
             if (stopped) return;
         }
-        int gridSize = (n - 1) / OFFSET_GRID + 2;
+        int grid = level < FINE_BELOW_LEVEL ? OFFSET_GRID_NEAR : OFFSET_GRID_FAR;
+        int gridSize = (n - 1) / grid + 2;
         int[] offsets = new int[gridSize * gridSize];
         for (int gz = 0; gz < gridSize; gz++) {
-            int z = Math.min(gz * OFFSET_GRID, n - 1);
+            int z = Math.min(gz * grid, n - 1);
             for (int gx = 0; gx < gridSize; gx++) {
-                int x = Math.min(gx * OFFSET_GRID, n - 1);
+                int x = Math.min(gx * grid, n - 1);
                 int cheap = ground[z * n + x];
                 if (cheap == Integer.MIN_VALUE) continue;
                 int full = SurfaceSearch.fromHint(f, x0 + x * s + s / 2, z0 + z * s + s / 2, minY, maxY, cheap, 2);
@@ -274,13 +275,13 @@ public final class SeedGenerator {
             if (stopped) return;
         }
         for (int z = 0; z < n; z++) {
-            int gz = z / OFFSET_GRID;
-            float tz = (z - gz * OFFSET_GRID) / (float) OFFSET_GRID;
+            int gz = z / grid;
+            float tz = (z - gz * grid) / (float) grid;
             for (int x = 0; x < n; x++) {
                 int i = z * n + x;
                 if (ground[i] == Integer.MIN_VALUE) continue;
-                int gx = x / OFFSET_GRID;
-                float tx = (x - gx * OFFSET_GRID) / (float) OFFSET_GRID;
+                int gx = x / grid;
+                float tx = (x - gx * grid) / (float) grid;
                 float a = offsets[gz * gridSize + gx] + (offsets[gz * gridSize + gx + 1] - offsets[gz * gridSize + gx]) * tx;
                 float b = offsets[(gz + 1) * gridSize + gx] + (offsets[(gz + 1) * gridSize + gx + 1] - offsets[(gz + 1) * gridSize + gx]) * tx;
                 int g = ground[i] + Math.round(a + (b - a) * tz);
@@ -387,6 +388,11 @@ public final class SeedGenerator {
                             float shown = TreeScatter.coverJitter(seed, wx, wz, s, cover);
                             h = (short) (h + TreeScatter.coarseLift(seed, wx, wz, s, cover, info.treeHeight));
                             int leafTop = table.top(info.leaf, info.id) & TileData.RGB, leafSide = table.side(info.leaf, info.id) & TileData.RGB;
+                            if (hit.over == snowId) {
+                                int snow = table.top(snowId, info.id) & TileData.RGB;
+                                leafTop = ColumnSampler.mix(leafTop, snow, ColumnSampler.SNOW_ON_TREES);
+                                leafSide = ColumnSampler.mix(leafSide, snow, ColumnSampler.SNOW_ON_TREES * 0.5f);
+                            }
                             top = ColumnSampler.mix(top & TileData.RGB, leafTop, shown) | (top & 0xFF000000);
                             side = ColumnSampler.mix(side & TileData.RGB, leafSide, shown);
                             if (shown >= 0.5f) top |= TileData.F_FOLIAGE;

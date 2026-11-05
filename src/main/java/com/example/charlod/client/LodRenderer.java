@@ -365,7 +365,7 @@ public final class LodRenderer {
         mvp.get(mvpArray);
         frustum.set(mvpArray);
 
-        mask.update(mc, cx, cz, MASK_UNIT);
+        mask.update(mc, cx, cy, cz, MASK_UNIT);
 
         RenderSystem.enableDepthTest();
         RenderSystem.depthFunc(GL11.GL_LEQUAL);

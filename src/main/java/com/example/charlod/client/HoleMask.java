@@ -50,7 +50,7 @@ final class HoleMask {
         return originZ;
     }
 
-    void update(Minecraft mc, double camX, double camZ, int unit) {
+    void update(Minecraft mc, double camX, double camY, double camZ, int unit) {
         long now = System.currentTimeMillis();
         int cx = (int) Math.floor(camX) >> 4, cz = (int) Math.floor(camZ) >> 4;
         int nx = cx - SIZE / 2, nz = cz - SIZE / 2;
@@ -77,7 +77,8 @@ final class HoleMask {
                 try {
                     int y = c.getHeight(Heightmap.Types.WORLD_SURFACE, 8, 8);
                     pos.set(chunkX * 16 + 8, Math.max(y - 1, mc.level.getMinBuildHeight()), chunkZ * 16 + 8);
-                    drawn = renderer.isChunkCompiled(pos);
+                    // Flying high, ground further below you than the render distance isn't drawn however close it is sideways.
+                    drawn = Math.abs(camY - y) < limit - 16.0 && renderer.isChunkCompiled(pos);
                 } catch (Throwable t) {
                     drawn = false;
                 }

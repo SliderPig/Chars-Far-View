@@ -344,9 +344,9 @@ public final class ColorTable implements McaChunk.Names {
         }
         if ((e.flags & BlockTable.FOLIAGE) != 0) {
             // Leaves are full of holes with dark behind them.
-            r *= 0.82f;
-            g *= 0.82f;
-            b *= 0.82f;
+            r *= 0.74f;
+            g *= 0.74f;
+            b *= 0.74f;
         }
         return (clamp(r) << 16) | (clamp(g) << 8) | clamp(b);
     }

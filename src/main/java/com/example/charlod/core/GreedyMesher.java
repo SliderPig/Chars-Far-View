@@ -55,7 +55,7 @@ public final class GreedyMesher {
 
     // Far away one block of height is less than a pixel: rounding it merges far more faces.
     public static int heightStep(int level) {
-        return level < 3 ? 1 : Math.min(8, 1 << (level - 2));
+        return level < 2 ? 1 : level == 2 ? 2 : level == 3 ? 4 : level == 4 ? 6 : 8;
     }
 
     public static int colourTolerance(int level) {

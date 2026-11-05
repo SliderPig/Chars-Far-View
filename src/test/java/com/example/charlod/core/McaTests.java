@@ -405,6 +405,15 @@ class McaTests {
     }
 
     @Test
+    void snowOnTreesIsOnlyPatchySoForestsDontSparkle() {
+        ChunkColumns snowy = sample(Integer.MAX_VALUE, STONE, LEAF, SNOW);
+        int top = snowy.top[0] & TileData.RGB;
+        assertNotEquals(0xFFFFFF, top);
+        assertNotEquals(0x106010, top);
+        assertTrue((snowy.top[0] & TileData.F_FOLIAGE) != 0);
+    }
+
+    @Test
     void leavesAndLavaAreFlagged() {
         assertTrue((sample(Integer.MAX_VALUE, STONE, LEAF).top[0] & TileData.F_FOLIAGE) != 0);
         assertTrue((sample(Integer.MAX_VALUE, STONE, LAVA).top[0] & TileData.F_GLOW) != 0);
