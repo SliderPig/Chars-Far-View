@@ -1,0 +1,29 @@
+# A brand new world: how long until the whole range shows, and what the frame rate does meanwhile.
+# python tools/run_real_client.py scenes fresh=true seed=424242   (copy this to run-real/scenes.txt first)
+set hud true
+up 60 0 6
+sinceworld
+fps gen_a 6
+shot f_a
+log
+fps gen_b 10
+shot f_b
+log
+settle 240 seed
+sinceworld
+log
+shot f_done_s
+up 0 180 6
+settle 5
+shot f_done_n
+up 120 180 30
+settle 20 seed
+shot f_done_high
+up -120 0 6
+settle 5
+fps idle_on 8
+far off
+settle 6
+fps idle_off 8
+far on
+log

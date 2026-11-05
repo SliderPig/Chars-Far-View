@@ -39,6 +39,8 @@ public final class SeedGenerator {
     private static final double COARSE_SOLID = 0.390625;
     private static final int FINE_BELOW_LEVEL = 3;
     private static final int MOUNTAIN_Y = 100;
+    // The cheap maths is off by a fairly steady amount locally: measured with the full maths on a sparse grid, every this many columns, then blended across.
+    private static final int OFFSET_GRID = 4;
     private static final int WANT_EXPIRES_MILLIS = 4000;
 
     private final LodWorld world;
@@ -216,21 +218,81 @@ public final class SeedGenerator {
         }
     }
 
-    private final Density fineSolid(int unused) {
-        return new Density(fine, 0.0);
-    }
-
     // Top solid block of the ground, Integer.MIN_VALUE for none. precise = ask the full terrain maths; otherwise the cheap one that knows hills but not their sharp edges.
     private int ground(int x, int z, int hint, boolean precise, Density fineD, Density coarseD) {
         if (roofed) return SurfaceSearch.belowRoof(fineD, x, z, minY, roofY - 4, 4, 2);
         if (islands) return SurfaceSearch.fromAbove(fineD, x, z, Math.max(minY, 0), Math.min(maxY, 120), 6, 2);
         int first = SurfaceSearch.fromHint(coarseD, x, z, minY, maxY, hint, precise ? 4 : 2);
-        if (first == Integer.MIN_VALUE) return first;
-        if (!precise && first < MOUNTAIN_Y) return first + COARSE_LIFT;
-        return SurfaceSearch.fromHint(fineD, x, z, minY, maxY, first, precise ? 1 : 3);
+        if (first == Integer.MIN_VALUE || !precise) return first;
+        return SurfaceSearch.fromHint(fineD, x, z, minY, maxY, first, 1);
     }
 
-    private static final int COARSE_LIFT = 0;
+    // All the ground heights of a tile. Asks the cheap maths for every column and the full maths only on a sparse grid; near you, mountains get the full maths too.
+    private void heights(int[] ground, int x0, int z0, int s, int level, Density f, Density c) {
+        int n = LodMath.TILE_COLS;
+        if (roofed || islands) {
+            // Gappy terrain needs the full maths all the way: every second column, the others copy.
+            for (int z = 0; z < n; z += 2) {
+                for (int x = 0; x < n; x += 2) {
+                    int g = ground(x0 + x * s + s / 2, z0 + z * s + s / 2, seaLevel, true, f, c);
+                    ground[z * n + x] = g;
+                    if (x + 1 < n) ground[z * n + x + 1] = g;
+                    if (z + 1 < n) {
+                        ground[(z + 1) * n + x] = g;
+                        if (x + 1 < n) ground[(z + 1) * n + x + 1] = g;
+                    }
+                }
+                if (stopped) return;
+            }
+            return;
+        }
+        int rowHint = seaLevel;
+        for (int z = 0; z < n; z++) {
+            int hint = rowHint;
+            for (int x = 0; x < n; x++) {
+                int g = ground(x0 + x * s + s / 2, z0 + z * s + s / 2, hint, false, f, c);
+                ground[z * n + x] = g;
+                if (g != Integer.MIN_VALUE) {
+                    hint = g;
+                    if (x == 0) rowHint = g;
+                }
+            }
+            if (stopped) return;
+        }
+        int gridSize = (n - 1) / OFFSET_GRID + 2;
+        int[] offsets = new int[gridSize * gridSize];
+        for (int gz = 0; gz < gridSize; gz++) {
+            int z = Math.min(gz * OFFSET_GRID, n - 1);
+            for (int gx = 0; gx < gridSize; gx++) {
+                int x = Math.min(gx * OFFSET_GRID, n - 1);
+                int cheap = ground[z * n + x];
+                if (cheap == Integer.MIN_VALUE) continue;
+                int full = SurfaceSearch.fromHint(f, x0 + x * s + s / 2, z0 + z * s + s / 2, minY, maxY, cheap, 2);
+                // A cave under the hint can only make this look too low, never too high.
+                offsets[gz * gridSize + gx] = full == Integer.MIN_VALUE ? 0 : Math.max(-12, Math.min(48, full - cheap));
+            }
+            if (stopped) return;
+        }
+        for (int z = 0; z < n; z++) {
+            int gz = z / OFFSET_GRID;
+            float tz = (z - gz * OFFSET_GRID) / (float) OFFSET_GRID;
+            for (int x = 0; x < n; x++) {
+                int i = z * n + x;
+                if (ground[i] == Integer.MIN_VALUE) continue;
+                int gx = x / OFFSET_GRID;
+                float tx = (x - gx * OFFSET_GRID) / (float) OFFSET_GRID;
+                float a = offsets[gz * gridSize + gx] + (offsets[gz * gridSize + gx + 1] - offsets[gz * gridSize + gx]) * tx;
+                float b = offsets[(gz + 1) * gridSize + gx] + (offsets[(gz + 1) * gridSize + gx + 1] - offsets[(gz + 1) * gridSize + gx]) * tx;
+                int g = ground[i] + Math.round(a + (b - a) * tz);
+                if (level < FINE_BELOW_LEVEL && g >= MOUNTAIN_Y) {
+                    int full = SurfaceSearch.fromHint(f, x0 + x * s + s / 2, z0 + z * s + s / 2, minY, maxY, g, 1);
+                    if (full != Integer.MIN_VALUE) g = full;
+                }
+                ground[i] = g;
+            }
+            if (stopped) return;
+        }
+    }
 
     // What the seed says this column's top face should be at (trees left out). Used for the truth check too, always precise.
     public int estimateTop(int x, int z) {
@@ -252,24 +314,13 @@ public final class SeedGenerator {
         int n = LodMath.TILE_COLS;
         TileData made = new TileData(key);
         int[] ground = new int[LodMath.TILE_CELLS];
-        boolean precise = level < FINE_BELOW_LEVEL;
         Density f = new Density(fine, 0.0), c = new Density(coarse, COARSE_SOLID);
-        int rowHint = seaLevel;
-        for (int z = 0; z < n; z++) {
-            int hint = rowHint;
-            for (int x = 0; x < n; x++) {
-                int g = ground(x0 + x * s + s / 2, z0 + z * s + s / 2, hint, precise, f, c);
-                ground[z * n + x] = g;
-                if (g != Integer.MIN_VALUE) {
-                    hint = g;
-                    if (x == 0) rowHint = g;
-                }
-            }
-            if (stopped) return made;
-        }
+        heights(ground, x0, z0, s, level, f, c);
+        if (stopped) return made;
         ColumnSampler.Hit hit = new ColumnSampler.Hit();
         ColumnSampler.Hit leaf = new ColumnSampler.Hit();
         ChunkColumns out = new ChunkColumns();
+        SeedBiomes.Info[] lastBiome = new SeedBiomes.Info[n];
         for (int z = 0; z < n; z++) {
             for (int x = 0; x < n; x++) {
                 int i = z * n + x;
@@ -277,8 +328,15 @@ public final class SeedGenerator {
                 int g = ground[i];
                 if (g == Integer.MIN_VALUE) continue;
                 int wx = x0 + x * s + s / 2, wz = z0 + z * s + s / 2;
-                Holder<Biome> biome = biomeAt(wx, g, wz);
-                SeedBiomes.Info info = biomeTable.of(biome);
+                // One biome question per four columns: its answer costs as much as a dozen height questions.
+                SeedBiomes.Info info;
+                if ((x & 1) == 0 && (z & 1) == 0 || lastBiome[x] == null) {
+                    info = biomeTable.of(biomeAt(wx, g, wz));
+                    lastBiome[x] = info;
+                    if (x + 1 < n) lastBiome[x + 1] = info;
+                } else {
+                    info = lastBiome[x];
+                }
                 float slope = slope(ground, x, z, n, g) / s;
                 hit.found = true;
                 hit.over = -1;

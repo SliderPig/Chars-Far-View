@@ -127,12 +127,17 @@ public final class GreedyMesher {
                         if (bottomJ != bottom) break;
                         b++;
                     }
-                    side(out, dir, line, a, b, height, bottom, colour, flags, shadeOf);
+                    side(out, dir, line, a, b, height, bottom, ColumnSampler.mix(colour & TileData.RGB, top[i] & TileData.RGB, sideBlend(level)), flags, shadeOf, level);
                     a = b;
                 }
             }
         }
         return out;
+    }
+
+    // Far away a side face stands for many small steps with tops between them, not a bare wall of dirt: the coarser, the more it takes after the top colour.
+    public static float sideBlend(int level) {
+        return level == 0 ? 0f : level == 1 ? 0.3f : level == 2 ? 0.55f : 0.72f;
     }
 
     private int bottomOf(short height, int nx, int nz, int skirt) {
@@ -167,12 +172,12 @@ public final class GreedyMesher {
         track(m, y);
     }
 
-    private static void side(Mesh m, int dir, int line, int a, int b, int top, int bottom, int colour, int flags, float shade) {
+    private static void side(Mesh m, int dir, int line, int a, int b, int top, int bottom, int colour, int flags, float shade, int level) {
         m.ensure(4);
         int high = packed(colour | flags, shade);
         // Darker towards the foot: a cheap shadow that makes cliffs and clumps of trees stand out from the ground.
         int drop = top - bottom;
-        float foot = (flags & TileData.F_FOLIAGE) != 0 ? Math.max(0.62f, 1f - drop * 0.045f) : Math.max(0.72f, 1f - drop * 0.02f);
+        float foot = (flags & TileData.F_FOLIAGE) != 0 ? Math.max(0.62f, 1f - drop * 0.045f) : Math.max(level >= 2 ? 0.86f : 0.72f, 1f - drop * 0.02f);
         int low = packed(colour | flags, shade * foot);
         switch (dir) {
             case 0 -> { // +x
