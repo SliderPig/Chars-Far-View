@@ -38,6 +38,7 @@ public final class McaScanner {
     private Path currentPath;
     private int index;
     private boolean loaded;
+    private long scanStart;
 
     public volatile int regionsLeft, regionsTotal;
     volatile long chunksRead, skippedChunks, nanosReading;
@@ -101,6 +102,7 @@ public final class McaScanner {
                 continue;
             }
             if (known != null && known == time) continue;
+            if (scanStart == 0) scanStart = System.nanoTime();
             current = new McaFile(p);
             currentPath = p;
             index = 0;
@@ -109,6 +111,11 @@ public final class McaScanner {
         }
         regionsLeft = 0;
         status = "up to date";
+        if (scanStart != 0) {
+            CharLod.LOG.info("[Far View] went through {} chunks of the save files in {} s ({} ms of reading each), {} MB of far terrain on disk",
+                    chunksRead, (System.nanoTime() - scanStart) / 1_000_000_000L, String.format("%.2f", chunksRead == 0 ? 0.0 : nanosReading / 1e6 / chunksRead), world.store().bytesOnDisk() / 1048576L);
+            scanStart = 0;
+        }
         return false;
     }
 

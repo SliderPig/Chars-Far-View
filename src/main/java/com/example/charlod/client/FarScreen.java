@@ -6,7 +6,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -14,7 +13,6 @@ import java.util.function.IntConsumer;
 
 // The settings. Pink and plum, soft pills, no boxes; everything drawn by hand in real screen pixels.
 public final class FarScreen extends Screen {
-    private static final ResourceLocation THIN = new ResourceLocation("uniform");
     private static final int W = 300, H = 270;
     private static final int PANEL = 0xFF2B1A30, WELL = 0xFF1A0F1E, BUTTON = 0xFF4A2F52, HOVER = 0xFF6A4575, PINK = 0xFFFF88C8, TEXT = 0xFFF4E4F0, DIM = 0xFFB8A0B8, DARK = 0xFF2B1A30;
 
@@ -45,15 +43,17 @@ public final class FarScreen extends Screen {
         return oy + (int) Math.round(d * unit);
     }
 
-    private float k(double size) {
-        return Math.max(1f, Math.round(size * unit * 1.5 * 2) / 2f);
+    // The normal Minecraft font, only ever at whole real pixels so it stays sharp.
+    private int k(double size) {
+        return Math.max(1, (int) Math.round(size * unit));
     }
 
     private void text(String s, double x, double y, double size, int colour, int align) {
-        Component c = Component.literal(s).withStyle(st -> st.withFont(THIN));
-        float scale = k(size);
+        Component c = Component.literal(s);
+        int scale = k(size);
         g.pose().pushPose();
         g.pose().translate(X(x) - (align == 0 ? font.width(c) * scale / 2 : align > 0 ? font.width(c) * scale : 0), Y(y), 0);
+        // (only moved by whole pixels, X and Y are already whole)
         g.pose().scale(scale, scale, 1);
         g.drawString(font, c, 0, 0, colour, false);
         g.pose().popPose();
