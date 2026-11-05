@@ -426,7 +426,9 @@ public final class SeedGenerator {
 
     // Compares a real chunk with what the seed says. A few columns, skipping tree tops. Now and then rather than always once it has seen plenty.
     void compare(int chunkX, int chunkZ, ChunkColumns real) {
-        if (stopped) return;
+        // Under a roof (the Nether) real floors are full of fungus trees, basalt and ledges the seed check can't tell from wrong terrain: tried in the real game,
+        // it dropped good seed terrain every time. There the seed is only a stand-in until real chunks come, and nothing is checked.
+        if (stopped || roofed) return;
         long asks = truthAsks.incrementAndGet();
         if (truth.chunks() >= TruthCheck.WINDOW && asks % 8 != 0) return;
         if (truth.chunks() < TruthCheck.WINDOW && asks % 2 != 0 && truth.chunks() >= TruthCheck.MIN_CHUNKS) return;
@@ -436,14 +438,6 @@ public final class SeedGenerator {
             int lx = (k & 1) == 0 ? 3 : 12, lz = (k & 2) == 0 ? 3 : 12;
             int i = lz * 16 + lx;
             short h = real.height[i];
-            if (roofed) {
-                // Under a roof there are many floors, so which one each side picks means little. What matters: is the real floor where the maths says ground ends?
-                if (h == LodMath.NO_DATA || h <= 33 || (real.top[i] & TileData.F_FOLIAGE) != 0) continue;
-                Density solid = new Density(fine, 0.0);
-                int wx = chunkX * 16 + lx, wz = chunkZ * 16 + lz;
-                errors[count++] = solid.at(wx, h - 2, wz) && !solid.at(wx, h + 1, wz) ? 0f : 32f;
-                continue;
-            }
             int est = estimateTop(chunkX * 16 + lx, chunkZ * 16 + lz);
             if (h == LodMath.NO_DATA) {
                 if (est != Integer.MIN_VALUE) errors[count++] = 64f; // the seed says ground, really nothing

@@ -1,0 +1,44 @@
+# Last look: brand new world, how long until the whole range shows, frame rate, reopening, other dimensions.
+set hud true
+time 6000
+up 50 0 6
+sinceworld
+fps gen_a 5
+shot k_a
+log
+fps gen_b 10
+shot k_b
+log
+settle 130 seed
+sinceworld
+log
+shot k_done_s
+up 0 90 6
+settle 4
+shot k_done_w
+up 120 180 30
+settle 8
+shot k_done_high
+up -120 0 6
+settle 4
+fps idle_on 6
+far off
+settle 4
+fps idle_off 6
+far on
+# reopening must be quick: the tiles are on disk
+sinceworld
+set threads 1
+settle 20 seed
+sinceworld
+log
+set threads 2
+# other dimensions
+dim minecraft:the_nether 0 90 0 0 5
+settle 30 seed
+log
+shot k_nether
+dim minecraft:the_end 300 100 300 0 15
+settle 15 seed
+log
+shot k_end
