@@ -214,6 +214,7 @@ public final class LodChecks {
     private static volatile long madeChunks;
     private static int ring, ringStep;
     private static boolean pregenStarted, pregenStop, pregenSaved;
+    private static volatile boolean pregenRunning;
     private static long lastReport;
 
     private static Path progressFile(Minecraft mc) {
@@ -242,7 +243,7 @@ public final class LodChecks {
                 ServerPlayer p = server.getPlayerList().getPlayers().get(0);
                 p.setGameMode(GameType.SPECTATOR);
                 p.teleportTo(CENTER_X + 0.5, 200, CENTER_Z + 0.5);
-                pregenTick(server.overworld());
+                pregenRunning = true;
             });
             lastReport = System.nanoTime();
         }
@@ -307,10 +308,12 @@ public final class LodChecks {
                 });
             }));
         }
-        if (!pregenStop || IN_FLIGHT.get() > 0) {
-            // once per server tick
-            server.tell(new net.minecraft.server.TickTask(server.getTickCount() + 1, () -> pregenTick(level)));
-        }
+    }
+
+    @SubscribeEvent
+    public static void onServerTick(TickEvent.ServerTickEvent e) {
+        if (!pregenRunning || e.phase != TickEvent.Phase.END || e.getServer() == null) return;
+        pregenTick(e.getServer().overworld());
     }
 
     private static int[] ringOffset(int r, int i) {
