@@ -264,15 +264,13 @@ public final class LodWorld {
         }
     }
 
-    private volatile Runnable afterClose;
-
-    // Runs once the data files are shut, before the next world opens them. Call it right after close().
-    void afterClose(Runnable what) {
-        afterClose = what;
-    }
-
     // Lets go of the data on a side thread, so leaving a world doesn't hang on disk writes. The render thread deletes the tiles' graphics memory itself.
     void close() {
+        close(null);
+    }
+
+    // then: runs once the data files are shut, before the next world opens them
+    void close(Runnable then) {
         closing = true;
         seen.clear();
         synchronized (pending) {
@@ -290,8 +288,6 @@ public final class LodWorld {
                 if (scanner != null) scanner.close();
                 TileStore s = store;
                 if (s != null) s.close();
-                Thread.sleep(0);
-                Runnable then = afterClose;
                 if (then != null) then.run();
             } catch (Throwable t) {
                 CharLod.LOG.warn("[Far View] trouble closing {}", dir, t);

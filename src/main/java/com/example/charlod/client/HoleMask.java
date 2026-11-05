@@ -73,10 +73,10 @@ final class HoleMask {
                 if (dx * dx + dz * dz > limit * limit) continue;
                 LevelChunk c = source.getChunk(chunkX, chunkZ, ChunkStatus.FULL, false);
                 if (c == null) continue;
-                int y = c.getHeight(Heightmap.Types.WORLD_SURFACE, 8, 8);
-                pos.set(chunkX * 16 + 8, Math.max(y - 1, mc.level.getMinBuildHeight()), chunkZ * 16 + 8);
                 boolean drawn;
                 try {
+                    int y = c.getHeight(Heightmap.Types.WORLD_SURFACE, 8, 8);
+                    pos.set(chunkX * 16 + 8, Math.max(y - 1, mc.level.getMinBuildHeight()), chunkZ * 16 + 8);
                     drawn = renderer.isChunkCompiled(pos);
                 } catch (Throwable t) {
                     drawn = false;

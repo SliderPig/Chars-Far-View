@@ -165,10 +165,9 @@ public final class LodRenderer {
             indices.put((short) v).put((short) (v + 1)).put((short) (v + 2)).put((short) (v + 2)).put((short) (v + 3)).put((short) v);
         }
         indices.flip();
-        // The element buffer is part of a vertex array's state: bind it under no vertex array only to fill it.
-        GL30.glBindVertexArray(0);
-        GL15.glBindBuffer(GL15.GL_ELEMENT_ARRAY_BUFFER, quadIndices);
-        GL15.glBufferData(GL15.GL_ELEMENT_ARRAY_BUFFER, indices, GL15.GL_STATIC_DRAW);
+        // Filled through the plain buffer slot: the element slot belongs to whichever vertex array is bound right now.
+        GL15.glBindBuffer(GL15.GL_ARRAY_BUFFER, quadIndices);
+        GL15.glBufferData(GL15.GL_ARRAY_BUFFER, indices, GL15.GL_STATIC_DRAW);
         MemoryUtil.memFree(indices);
         ready = true;
     }

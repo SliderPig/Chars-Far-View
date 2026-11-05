@@ -166,6 +166,8 @@ public final class FarClient {
         if (!drawing() || e.getMode() != FogRenderer.FogMode.FOG_TERRAIN || e.getType() != FogType.NONE) return;
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || specialView(mc, e.getCamera())) return;
+        // Embeddium's clouds ask for fog well past the render distance: those keep their own numbers.
+        if (e.getFarPlaneDistance() > mc.options.getEffectiveRenderDistance() * 16f + 1f) return;
         float[] f = fogFor(mc);
         // Where there is nothing beyond the real chunks yet, the game's own fog stays, or they'd end in a hard edge against the sky.
         float show = smooth(RENDERER.coverage(), 0.3f, 0.7f);
@@ -212,8 +214,9 @@ public final class FarClient {
         LodWorld w = world;
         if (level == null || w == null) return;
         Path dir = w.dir;
-        close();
-        w.afterClose(() -> deleteFolder(dir));
+        RENDERER.forget(w);
+        w.close(() -> deleteFolder(dir));
+        world = null;
         open(level);
     }
 

@@ -7,6 +7,8 @@ authors="Char"
 modId="charlod"
 version="${file.jarVersion}"
 displayName="{C} Char's Far View"
+logoFile="charlod_logo.png"
+logoBlur=false
 # PC side mod: nobody else needs it, and you can join any server with it.
 displayTest="IGNORE_ALL_VERSION"
 description='''
