@@ -32,8 +32,9 @@ public final class FarSettings {
     public static boolean enabled = true;
     public static int distance = 2048;
     public static Quality quality = Quality.BALANCED;
-    public static int threads = 1;
+    public static int threads = 2;
     public static boolean useGeneratedChunks = true;
+    public static boolean seedGenerate = true;
     public static boolean askServer = true;
     public static boolean showHud = false;
     public static int memoryMb = 64;
@@ -62,6 +63,7 @@ public final class FarSettings {
         distance = clamp(integer(p, "distance", distance), 256, 32768);
         threads = clamp(integer(p, "threads", threads), 1, 4);
         useGeneratedChunks = bool(p, "useGeneratedChunks", useGeneratedChunks);
+        seedGenerate = bool(p, "seedGenerate", seedGenerate);
         askServer = bool(p, "askServer", askServer);
         showHud = bool(p, "showHud", showHud);
         memoryMb = clamp(integer(p, "memoryMb", memoryMb), 16, 1024);
@@ -79,6 +81,7 @@ public final class FarSettings {
         p.setProperty("quality", quality.name());
         p.setProperty("threads", String.valueOf(threads));
         p.setProperty("useGeneratedChunks", String.valueOf(useGeneratedChunks));
+        p.setProperty("seedGenerate", String.valueOf(seedGenerate));
         p.setProperty("askServer", String.valueOf(askServer));
         p.setProperty("showHud", String.valueOf(showHud));
         p.setProperty("memoryMb", String.valueOf(memoryMb));

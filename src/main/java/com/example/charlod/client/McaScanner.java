@@ -5,6 +5,7 @@ import com.example.charlod.core.ChunkColumns;
 import com.example.charlod.core.ColumnSampler;
 import com.example.charlod.core.McaChunk;
 import com.example.charlod.core.McaFile;
+import net.minecraft.client.Minecraft;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -79,6 +80,7 @@ public final class McaScanner {
             return true;
         }
         ColumnSampler.sample(chunk, table, world.ceilingTop, columns);
+        world.checkTruth(chunk.chunkX, chunk.chunkZ, columns);
         world.store().putChunk(chunk.chunkX, chunk.chunkZ, columns);
         chunksRead++;
         nanosReading += System.nanoTime() - start;
@@ -141,8 +143,10 @@ public final class McaScanner {
                         if (known != null) {
                             long time = Files.getLastModifiedTime(p).toMillis();
                             if (known == time) continue;
-                            // A region being played in changes all the time, and what you see is taken live anyway: leave it until you've gone.
-                            if (d < 1024 || now - time < 60_000) continue;
+                            // A region with chunks being played in right now changes all the time, and what you see is taken live anyway: leave it until you've gone.
+                            // Anything else changed since we read it (a plugin, WorldEdit, an old save put back) gets read again once it has settled.
+                            double rd = Minecraft.getInstance().options.getEffectiveRenderDistance() * 16.0;
+                            if (d < rd + 362 || now - time < 60_000) continue;
                         }
                         found.add(p);
                         distanceOf.put(p, d);

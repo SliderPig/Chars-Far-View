@@ -11,6 +11,9 @@ public final class Selector {
         // Please get this tile ready. Smaller priority = sooner.
         void want(long key, double priority);
 
+        // This tile has nothing yet. True if something is going to fill it (the seed generator), so its parent should stay on show meanwhile.
+        boolean missing(long key, double priority);
+
         void draw(long key, double distance);
     }
 
@@ -36,12 +39,9 @@ public final class Selector {
 
     // Straight line from the camera to the nearest point of the tile. Height only counts well above the usual ground, so flying high gets coarser.
     public double distance(int level, int tx, int tz) {
-        double size = LodMath.tileBlocks(level);
-        double x0 = (double) tx * size, z0 = (double) tz * size;
-        double dx = cx < x0 ? x0 - cx : cx > x0 + size ? cx - x0 - size : 0;
-        double dz = cz < z0 ? z0 - cz : cz > z0 + size ? cz - z0 - size : 0;
+        double h = horizontal(level, tx, tz);
         double dy = Math.max(0, cy - 128);
-        return Math.sqrt(dx * dx + dz * dz + dy * dy);
+        return Math.sqrt(h * h + dy * dy);
     }
 
     private double horizontal(int level, int tx, int tz) {
@@ -56,9 +56,12 @@ public final class Selector {
         if (horizontal(level, tx, tz) > maxDistance) return;
         long key = LodMath.key(level, tx, tz);
         int state = tiles.state(key);
-        if (state == EMPTY) return;
         double d = distance(level, tx, tz);
         int perColumn = LodMath.blocksPerColumn(level);
+        if (state == EMPTY) {
+            tiles.missing(key, d / perColumn);
+            return;
+        }
         if (state != READY) {
             tiles.want(key, d / perColumn);
             return;
@@ -73,9 +76,12 @@ public final class Selector {
             if (horizontal(level - 1, cxT, czT) > maxDistance) continue;
             long child = LodMath.key(level - 1, cxT, czT);
             int s = tiles.state(child);
+            double priority = distance(level - 1, cxT, czT) / (perColumn / 2.0);
             if (s == UNKNOWN || s == LOADING) {
                 ready = false;
-                tiles.want(child, distance(level - 1, cxT, czT) / (perColumn / 2.0));
+                tiles.want(child, priority);
+            } else if (s == EMPTY && tiles.missing(child, priority)) {
+                ready = false;
             }
         }
         if (!ready) {

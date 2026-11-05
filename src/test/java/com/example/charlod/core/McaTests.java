@@ -494,6 +494,15 @@ class McaTests {
     }
 
     @Test
+    void anEmptyColumnHasNoDataEvenWithAFreshHit() {
+        ColumnSampler.Hit h = new ColumnSampler.Hit();
+        ChunkColumns c = new ChunkColumns();
+        c.clear();
+        ColumnSampler.colour(h, TABLE, 3, c);
+        assertEquals(LodMath.NO_DATA, c.height[3]);
+    }
+
+    @Test
     void anEmptyColumnHasNoData() {
         assertEquals(LodMath.NO_DATA, sample(Integer.MAX_VALUE).height[0]);
     }

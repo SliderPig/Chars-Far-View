@@ -14,7 +14,7 @@ public final class ColumnSampler {
         public boolean found;
         public int y, block, over = -1, depth, bed = -1, biome, bedBiome;
 
-        void clear() {
+        public void clear() {
             found = false;
             over = -1;
             depth = 0;
@@ -87,6 +87,7 @@ public final class ColumnSampler {
     }
 
     public static void colour(Hit h, BlockTable table, int i, ChunkColumns out) {
+        // (a plain copy of the rule for a single column is all a seed-made tile needs too)
         if (!h.found) {
             out.height[i] = LodMath.NO_DATA;
             return;

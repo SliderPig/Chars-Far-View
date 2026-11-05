@@ -66,7 +66,9 @@ public final class LodChecks {
     private static final long SEED = Long.getLong("charlod.seed", 1L);
     private static final int CENTER_X = Integer.getInteger("charlod.cx", 0), CENTER_Z = Integer.getInteger("charlod.cz", 0);
     private static final int SECONDS = Integer.getInteger("charlod.seconds", 420);
-    private static final String WORLD = "lodtest";
+    private static final boolean FRESH = Boolean.getBoolean("charlod.fresh");
+    private static final String WORLD = FRESH ? "fresh" + (System.currentTimeMillis() / 1000) : System.getProperty("charlod.world", "lodtest");
+    private static long createdNanos;
 
     private static boolean titleSeen, started, quitting;
     private static long startNanos;
@@ -117,6 +119,13 @@ public final class LodChecks {
             mc.options.framerateLimit().set(260);
             mc.options.renderDistance().set(Integer.getInteger("charlod.rd", 10));
             mc.options.save();
+            FarSettings.distance = Integer.getInteger("charlod.distance", 2048);
+            FarSettings.quality = FarSettings.Quality.BALANCED;
+            FarSettings.threads = Integer.getInteger("charlod.threads", 2);
+            FarSettings.enabled = true;
+            FarSettings.seedGenerate = !Boolean.getBoolean("charlod.noseed");
+            FarSettings.showHud = false;
+            createdNanos = System.nanoTime();
             Path save = mc.gameDirectory.toPath().resolve("saves").resolve(WORLD).resolve("level.dat");
             if (Files.exists(save)) {
                 mc.createWorldOpenFlows().loadLevel(mc.screen, WORLD);
@@ -426,11 +435,62 @@ public final class LodChecks {
                 if (FarClient.world() != null) FarClient.world().touch();
                 waitTicks = 4;
             }
-            case "settle" -> { // settle maxSeconds: until far view has nothing left to load and the real chunks are built
+            case "seedreport" -> {
+                var w = FarClient.world();
+                if (w == null || w.seed == null) {
+                    log("no seed generator: " + (w == null ? "no world" : w.seedNote));
+                } else {
+                    log("seed speed: " + w.seed.speedReport(Integer.parseInt(s[1])));
+                }
+            }
+            case "seedstress" -> {
+                var w = FarClient.world();
+                if (w != null && w.seed != null) {
+                    try {
+                        log("seed stress: " + w.seed.stressReport(Integer.parseInt(s[1]), Integer.parseInt(s[2])));
+                    } catch (InterruptedException e) {
+                        log("stress interrupted");
+                    }
+                }
+            }
+            case "fillarea" -> { // fillarea blockX blockZ halfWidthInChunks y block: a big flat plate over real terrain, like a terrain plugin or WorldEdit
+                int bx = Integer.parseInt(s[1]), bz = Integer.parseInt(s[2]), half = Integer.parseInt(s[3]), y = Integer.parseInt(s[4]);
+                var block = net.minecraftforge.registries.ForgeRegistries.BLOCKS.getValue(new ResourceLocation(s[5])).defaultBlockState();
+                server.execute(() -> {
+                    long start = System.nanoTime();
+                    ServerLevel l = server.overworld();
+                    BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+                    int chunks = 0;
+                    for (int cz = (bz >> 4) - half; cz <= (bz >> 4) + half; cz++) {
+                        for (int cx = (bx >> 4) - half; cx <= (bx >> 4) + half; cx++) {
+                            var chunk = l.getChunk(cx, cz);
+                            chunks++;
+                            for (int z = 0; z < 16; z++) {
+                                for (int x = 0; x < 16; x++) {
+                                    pos.set(cx * 16 + x, y, cz * 16 + z);
+                                    chunk.setBlockState(pos, block, false);
+                                }
+                            }
+                            chunk.setUnsaved(true);
+                        }
+                    }
+                    log("filled " + chunks + " chunks at y " + y + " in " + (System.nanoTime() - start) / 1_000_000 + " ms");
+                });
+                waitTicks = 20;
+            }
+            case "saveall" -> {
+                server.execute(() -> {
+                    server.saveEverything(false, true, true);
+                    log("saved everything");
+                });
+                waitTicks = 40;
+            }
+            case "settle" -> { // settle maxSeconds [scan|seed]: until far view has nothing left to load and the real chunks are built
                 waiting = s;
                 waitStart = System.nanoTime();
             }
             case "wait" -> waitTicks = Integer.parseInt(s[1]);
+            case "sinceworld" -> log("now " + String.format("%.1f", (System.nanoTime() - createdNanos) / 1e9) + " s since the world was asked for");
             case "shot" -> {
                 String name = s[1] + ".png";
                 Screenshot.grab(mc.gameDirectory, name, mc.getMainRenderTarget(), c -> {});
@@ -467,9 +527,11 @@ public final class LodChecks {
         var w = FarClient.world();
         boolean far = !FarSettings.enabled || (w != null && w.queuedTiles() == 0 && w.uploads.isEmpty());
         boolean real = mc.levelRenderer.countRenderedChunks() > 0 && mc.levelRenderer.hasRenderedAllChunks();
-        boolean scan = w == null || w.scanner == null || waiting.length < 3 || w.scanner.regionsLeft == 0;
-        if (far && real && scan) {
-            log("settled in " + (int) passed + " s");
+        String extra = waiting.length < 3 ? "" : waiting[2];
+        boolean scan = !extra.equals("scan") || w == null || w.scanner == null || w.scanner.regionsLeft == 0;
+        boolean seed = !extra.equals("seed") || w == null || w.seed == null || w.seed.idle();
+        if (far && real && scan && seed) {
+            log("settled in " + (int) passed + " s (" + String.format("%.1f", (System.nanoTime() - createdNanos) / 1e9) + " s since the world was asked for)");
             return true;
         }
         return false;

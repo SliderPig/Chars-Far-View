@@ -13,7 +13,7 @@ import java.util.function.IntConsumer;
 
 // The settings. Pink and plum, soft pills, no boxes; everything drawn by hand in real screen pixels.
 public final class FarScreen extends Screen {
-    private static final int W = 300, H = 270;
+    private static final int W = 300, H = 298;
     private static final int PANEL = 0xFF2B1A30, WELL = 0xFF1A0F1E, BUTTON = 0xFF4A2F52, HOVER = 0xFF6A4575, PINK = 0xFFFF88C8, TEXT = 0xFFF4E4F0, DIM = 0xFFB8A0B8, DARK = 0xFF2B1A30;
 
     private record Hit(int x, int y, int w, int h, Runnable what) {}
@@ -183,6 +183,11 @@ public final class FarScreen extends Screen {
             changed();
         });
         y += 26;
+        toggle(y, "Fast generate from seed", "Your own new worlds: far terrain in seconds", FarSettings.seedGenerate, () -> {
+            FarSettings.seedGenerate = !FarSettings.seedGenerate;
+            changed();
+        });
+        y += 26;
         slider(y, "Graphics memory limit", FarSettings.vramMb + " MB", nearestIndex(FarSettings.VRAM_STEPS, FarSettings.vramMb), FarSettings.VRAM_STEPS.length, i -> {
             FarSettings.vramMb = FarSettings.VRAM_STEPS[i];
             changed();
@@ -206,7 +211,7 @@ public final class FarScreen extends Screen {
         else line = "Reading save files: " + w.scanner.regionsLeft + " regions to go";
         text(line, W / 2.0, y, 0.75, DIM, 0);
         double by = H - 25;
-        pill(20, by, 130, 17, sureRebuild ? "Sure? Click again" : "Rebuild this world", sureRebuild, () -> {
+        pill(20, by, 130, 17, sureRebuild ? "Sure? Click again" : "Rebuild for this world", sureRebuild, () -> {
             if (!sureRebuild) {
                 sureRebuild = true;
                 return;

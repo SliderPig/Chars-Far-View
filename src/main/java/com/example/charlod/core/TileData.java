@@ -5,7 +5,10 @@ import java.util.Arrays;
 // The columns of one tile. top = RGB with flags in the top byte, side = colour of its side faces.
 public final class TileData {
     public static final int F_WATER = 1 << 24, F_FOLIAGE = 2 << 24, F_GLOW = 4 << 24;
+    // Worked out from the seed, not read from real chunks: anything real replaces it. Coarse = only copied down from a rougher tile so far.
+    public static final int F_ESTIMATED = 8 << 24, F_COARSE = 16 << 24;
     public static final int RGB = 0xFFFFFF;
+    public static final int LOOK_FLAGS = F_WATER | F_FOLIAGE | F_GLOW;
 
     public final long key;
     public final short[] height = new short[LodMath.TILE_CELLS];
@@ -22,6 +25,11 @@ public final class TileData {
         return true;
     }
 
+    public boolean hasCoarseCells() {
+        for (int i = 0; i < top.length; i++) if ((top[i] & F_COARSE) != 0 && height[i] != LodMath.NO_DATA) return true;
+        return false;
+    }
+
     // Fills one quarter of this (parent) tile from a child tile. Returns true if anything changed.
     public boolean fillQuarterFrom(TileData child, int quarterX, int quarterZ) {
         int half = LodMath.TILE_COLS / 2;
@@ -36,5 +44,24 @@ public final class TileData {
             }
         }
         return changed;
+    }
+
+    // A brand new tile under a rougher one that has seed-made terrain: starts as a blocky copy of it, so it never shows holes while the rest comes in.
+    public void inheritEstimates(TileData ancestor) {
+        int up = LodMath.level(ancestor.key) - LodMath.level(key);
+        if (up <= 0) return;
+        int ownX = LodMath.tx(key) - (LodMath.tx(ancestor.key) << up), ownZ = LodMath.tz(key) - (LodMath.tz(ancestor.key) << up);
+        for (int z = 0; z < LodMath.TILE_COLS; z++) {
+            int az = ((ownZ * LodMath.TILE_COLS) + z) >> up;
+            for (int x = 0; x < LodMath.TILE_COLS; x++) {
+                int ax = ((ownX * LodMath.TILE_COLS) + x) >> up;
+                int from = LodMath.cell(ax, az);
+                if (ancestor.height[from] == LodMath.NO_DATA || (ancestor.top[from] & F_ESTIMATED) == 0) continue;
+                int to = LodMath.cell(x, z);
+                height[to] = ancestor.height[from];
+                top[to] = ancestor.top[from] | F_COARSE;
+                side[to] = ancestor.side[from];
+            }
+        }
     }
 }

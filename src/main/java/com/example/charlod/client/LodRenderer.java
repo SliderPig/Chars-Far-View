@@ -95,6 +95,11 @@ public final class LodRenderer {
             }
 
             @Override
+            public boolean missing(long key, double priority) {
+                return world.missing(key, priority);
+            }
+
+            @Override
             public void draw(long key, double distance) {
                 Tile t = world.tiles.get(key);
                 if (t != null && t.vao != 0) {

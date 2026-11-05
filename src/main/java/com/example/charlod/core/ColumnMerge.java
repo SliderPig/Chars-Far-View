@@ -2,29 +2,41 @@ package com.example.charlod.core;
 
 // Four columns become one, one level further out. The mean height keeps hills where they are, a little pull towards the highest
 // keeps peaks and tree tops on the skyline; a column counts as water only when at least half of it is.
+// Real columns always beat seed-made ones: seed-made ones only count when there is nothing real among the four.
 public final class ColumnMerge {
     private ColumnMerge() {}
 
     public static boolean merge(short[] sh, int[] st, int[] ss, int a, int b, int c, int d, short[] dh, int[] dt, int[] ds, int out) {
-        int count = 0, water = 0;
-        if (sh[a] != LodMath.NO_DATA) { count++; if ((st[a] & TileData.F_WATER) != 0) water++; }
-        if (sh[b] != LodMath.NO_DATA) { count++; if ((st[b] & TileData.F_WATER) != 0) water++; }
-        if (sh[c] != LodMath.NO_DATA) { count++; if ((st[c] & TileData.F_WATER) != 0) water++; }
-        if (sh[d] != LodMath.NO_DATA) { count++; if ((st[d] & TileData.F_WATER) != 0) water++; }
+        int count = 0, real = 0;
+        for (int i = 0; i < 4; i++) {
+            int s = i == 0 ? a : i == 1 ? b : i == 2 ? c : d;
+            if (sh[s] == LodMath.NO_DATA) continue;
+            count++;
+            if ((st[s] & TileData.F_ESTIMATED) == 0) real++;
+        }
         if (count == 0) {
-            if (dh[out] == LodMath.NO_DATA) return false;
+            if (dh[out] == LodMath.NO_DATA || (dt[out] & TileData.F_ESTIMATED) != 0) return false; // whatever the seed said here still stands
             dh[out] = LodMath.NO_DATA;
             dt[out] = 0;
             ds[out] = 0;
             return true;
         }
-        boolean wantWater = water * 2 >= count;
+        boolean onlyReal = real > 0;
+        int water = 0, seen = 0;
+        for (int i = 0; i < 4; i++) {
+            int s = i == 0 ? a : i == 1 ? b : i == 2 ? c : d;
+            if (sh[s] == LodMath.NO_DATA || (onlyReal && (st[s] & TileData.F_ESTIMATED) != 0)) continue;
+            seen++;
+            if ((st[s] & TileData.F_WATER) != 0) water++;
+        }
+        boolean wantWater = water * 2 >= seen;
         int used = 0, sum = 0, max = Integer.MIN_VALUE, tr = 0, tg = 0, tb = 0, sr = 0, sg = 0, sb = 0, foliage = 0, glow = 0;
         for (int i = 0; i < 4; i++) {
             int s = i == 0 ? a : i == 1 ? b : i == 2 ? c : d;
             short h = sh[s];
             if (h == LodMath.NO_DATA) continue;
             int t = st[s];
+            if (onlyReal && (t & TileData.F_ESTIMATED) != 0) continue;
             if (((t & TileData.F_WATER) != 0) != wantWater) continue;
             used++;
             sum += h;
@@ -45,6 +57,7 @@ public final class ColumnMerge {
         if (wantWater) top |= TileData.F_WATER;
         if (foliage * 2 >= used) top |= TileData.F_FOLIAGE;
         if (glow * 2 >= used) top |= TileData.F_GLOW;
+        if (!onlyReal) top |= TileData.F_ESTIMATED;
         int side = ((sr / used) << 16) | ((sg / used) << 8) | (sb / used);
         if (dh[out] == height && dt[out] == top && ds[out] == side) return false;
         dh[out] = height;

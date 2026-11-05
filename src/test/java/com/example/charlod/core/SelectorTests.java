@@ -29,6 +29,11 @@ class SelectorTests {
         }
 
         @Override
+        public boolean missing(long key, double priority) {
+            return false;
+        }
+
+        @Override
         public void draw(long key, double distance) {
             drawn.add(key);
         }

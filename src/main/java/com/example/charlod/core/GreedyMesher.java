@@ -118,11 +118,11 @@ public final class GreedyMesher {
                         continue;
                     }
                     int colour = sideC[i];
-                    int flags = top[i] & 0xFF000000;
+                    int flags = top[i] & TileData.LOOK_FLAGS;
                     int b = a + 1;
                     while (b < n) {
                         int j = alongX ? LodMath.cell(line, b) : LodMath.cell(b, line);
-                        if (h[j] != height || !close(sideC[j], colour, tol) || (top[j] & 0xFF000000) != flags) break;
+                        if (h[j] != height || !close(sideC[j], colour, tol) || (top[j] & TileData.LOOK_FLAGS) != flags) break;
                         int bottomJ = bottomOf(h[j], alongX ? line + sign : b, alongX ? b : line + sign, skirt);
                         if (bottomJ != bottom) break;
                         b++;
@@ -142,7 +142,7 @@ public final class GreedyMesher {
     }
 
     private boolean canMerge(int i, short height, int colour, int tol, int[] top) {
-        return !used[i] && h[i] == height && (top[i] & 0xFF000000) == (colour & 0xFF000000) && close(top[i], colour, tol);
+        return !used[i] && h[i] == height && (top[i] & TileData.LOOK_FLAGS) == (colour & TileData.LOOK_FLAGS) && close(top[i], colour, tol);
     }
 
     private static boolean close(int a, int b, int tol) {

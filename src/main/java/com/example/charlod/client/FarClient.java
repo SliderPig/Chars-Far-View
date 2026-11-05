@@ -43,6 +43,7 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 // Ties it all into the game.
 public final class FarClient {
+    private static final String VERDICT = "seed.verdict";
     private static final KeyMapping TOGGLE = new KeyMapping("key.charlod.toggle", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F9, "key.categories.charlod");
     private static final KeyMapping SETTINGS = new KeyMapping("key.charlod.settings", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F10, "key.categories.charlod");
 
@@ -217,7 +218,25 @@ public final class FarClient {
         RENDERER.forget(w);
         w.close(() -> deleteFolder(dir));
         world = null;
-        open(level);
+        open(level, true);
+    }
+
+    // The truth check has spoken: everything seed-made goes, real terrain gets read again, and that stays the verdict for this world until a rebuild.
+    static void dropSeedTerrain(LodWorld w) {
+        if (world != w) return;
+        ClientLevel level = w.level;
+        Path dir = w.dir;
+        RENDERER.forget(w);
+        w.close(() -> {
+            deleteFolder(dir);
+            try {
+                java.nio.file.Files.writeString(dir.resolve(VERDICT), "real terrain here isn't what the seed says\n");
+            } catch (java.io.IOException e) {
+                CharLod.LOG.warn("[Far View] couldn't save the verdict: {}", e.toString());
+            }
+        });
+        world = null;
+        open(level, false);
     }
 
     private static void deleteFolder(Path dir) {
@@ -229,6 +248,11 @@ public final class FarClient {
     }
 
     private static void open(ClientLevel level) {
+        open(level, null);
+    }
+
+    // seedAllowed: null = whatever this world's saved verdict says
+    private static void open(ClientLevel level, Boolean seedAllowed) {
         close();
         try {
             Minecraft mc = Minecraft.getInstance();
@@ -241,16 +265,34 @@ public final class FarClient {
                 Path root = server.getWorldPath(LevelResource.ROOT).toAbsolutePath().normalize();
                 long seed = server.getWorldData().worldGenOptions().seed();
                 id = "sp_" + clean(root.getFileName().toString()) + "_" + Long.toHexString(seed);
+                if (Boolean.getBoolean("charlod.estimateonly")) id += "_est";
                 regionDir = DimensionType.getStorageFolder(level.dimension(), root).resolve("region");
             } else {
                 ServerData data = mc.getCurrentServer();
                 id = "mp_" + clean(data != null ? data.ip : "unknown");
             }
-            world = new LodWorld(level, base.resolve(id).resolve(dim), regionDir);
+            Path dir = base.resolve(id).resolve(dim);
+            boolean allowed = seedAllowed != null ? seedAllowed : !java.nio.file.Files.exists(dir.resolve(VERDICT));
+            world = new LodWorld(level, dir, regionDir, allowed);
+            feedLoadedChunks(mc, level);
             CharLod.LOG.info("[Far View] opened {} {}", id, dim);
         } catch (Throwable t) {
             CharLod.LOG.error("[Far View] couldn't start for this world", t);
             problem("couldn't start for this world");
+        }
+    }
+
+    // After a rebuild the chunks already loaded won't announce themselves again.
+    private static void feedLoadedChunks(Minecraft mc, ClientLevel level) {
+        if (mc.player == null || mc.level != level) return;
+        int rd = mc.options.getEffectiveRenderDistance() + 2;
+        int cx = mc.player.chunkPosition().x, cz = mc.player.chunkPosition().z;
+        var source = level.getChunkSource();
+        for (int z = -rd; z <= rd; z++) {
+            for (int x = -rd; x <= rd; x++) {
+                var chunk = source.getChunk(cx + x, cz + z, net.minecraft.world.level.chunk.ChunkStatus.FULL, false);
+                if (chunk != null) world.seen(chunk);
+            }
         }
     }
 
@@ -323,7 +365,33 @@ public final class FarClient {
             RemoteFeed f = w.remote;
             out.add(String.format("Far View: chunks seen %d, server: %s, regions left %d, got %d chunks in %d KB", w.seenChunksCount(), f.status, f.regionsLeft, f.chunksReceived, f.bytesReceived / 1024));
         }
+        SeedGenerator g = w.seed;
+        if (g == null) {
+            out.add("Far View seed: off" + (w.seedNote.isEmpty() ? "" : " (" + w.seedNote + ")"));
+        } else {
+            long made = g.tilesMade.get();
+            out.add(String.format("Far View seed: %s, %d tiles made (%.0f ms each), %d to do; checked against %d real chunks: %.1f blocks off, %.0f%% badly",
+                    FarSettings.seedGenerate ? "on" : "paused", made, made == 0 ? 0.0 : g.nanosMaking.get() / 1e6 / made, g.queued(), g.truth.chunks(), g.truth.meanError(), g.truth.badShare() * 100));
+        }
         return out;
+    }
+
+    @net.minecraftforge.eventbus.api.SubscribeEvent
+    public static void onCommands(net.minecraftforge.client.event.RegisterClientCommandsEvent e) {
+        e.getDispatcher().register(net.minecraft.commands.Commands.literal("charlod")
+                .then(net.minecraft.commands.Commands.literal("rebuild").executes(c -> {
+                    if (world == null) {
+                        c.getSource().sendFailure(Component.literal("Far View: not in a world"));
+                        return 0;
+                    }
+                    rebuild();
+                    c.getSource().sendSuccess(() -> Component.literal("Far View: starting this world's far terrain again").withStyle(ChatFormatting.LIGHT_PURPLE), false);
+                    return 1;
+                }))
+                .then(net.minecraft.commands.Commands.literal("status").executes(c -> {
+                    for (String line : status()) c.getSource().sendSuccess(() -> Component.literal(line).withStyle(ChatFormatting.LIGHT_PURPLE), false);
+                    return 1;
+                })));
     }
 
     @net.minecraftforge.eventbus.api.SubscribeEvent
