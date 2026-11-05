@@ -211,7 +211,7 @@ public final class FarScreen extends Screen {
         else line = "Reading save files: " + w.scanner.regionsLeft + " regions to go";
         text(line, W / 2.0, y, 0.75, DIM, 0);
         double by = H - 25;
-        pill(20, by, 130, 17, sureRebuild ? "Sure? Click again" : "Rebuild for this world", sureRebuild, () -> {
+        pill(20, by, 180, 17, sureRebuild ? "Sure? Click again" : "Rebuild Far View for this world", sureRebuild, () -> {
             if (!sureRebuild) {
                 sureRebuild = true;
                 return;
@@ -219,7 +219,7 @@ public final class FarScreen extends Screen {
             sureRebuild = false;
             FarClient.rebuild();
         });
-        pill(W - 20 - 90, by, 90, 17, "Done", true, this::onClose);
+        pill(W - 20 - 70, by, 70, 17, "Done", true, this::onClose);
     }
 
     private void changed() {
