@@ -276,7 +276,7 @@ public final class LodChecks {
         var server = level.getServer();
         ServerChunkCache source = level.getChunkSource();
         int started = 0;
-        while (!pregenStop && IN_FLIGHT.get() < 24 && started < 8) {
+        while (!pregenStop && IN_FLIGHT.get() < 64 && started < 16) {
             int side = ring == 0 ? 1 : ring * 8;
             if (ringStep >= side) {
                 ring++;
@@ -289,13 +289,14 @@ public final class LodChecks {
             source.addRegionTicket(PREGEN, pos, 0, pos);
             IN_FLIGHT.incrementAndGet();
             started++;
-            source.getChunkFuture(x, z, ChunkStatus.FULL, true).whenComplete((result, error) -> {
+            // Asked from the server thread this call waits for the chunk: one at a time. Asked from elsewhere it just hands back a future.
+            net.minecraft.Util.backgroundExecutor().execute(() -> source.getChunkFuture(x, z, ChunkStatus.FULL, true).whenComplete((result, error) -> {
                 server.execute(() -> {
                     source.removeRegionTicket(PREGEN, pos, 0, pos);
                     IN_FLIGHT.decrementAndGet();
                     madeChunks++;
                 });
-            });
+            }));
         }
         if (!pregenStop || IN_FLIGHT.get() > 0) {
             // once per server tick
