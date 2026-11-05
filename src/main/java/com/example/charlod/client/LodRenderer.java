@@ -17,7 +17,6 @@ import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL15;
 import org.lwjgl.opengl.GL20;
 import org.lwjgl.opengl.GL30;
-import org.lwjgl.opengl.GL33;
 import org.lwjgl.system.MemoryUtil;
 
 import java.io.IOException;
@@ -78,6 +77,7 @@ public final class LodRenderer {
     private NativeImage lightPixels;
     private boolean lightSearched;
     private int checkedErrors;
+    private float coverage;
 
     public LodRenderer() {
         selector = new Selector(new Selector.Tiles() {
@@ -109,7 +109,7 @@ public final class LodRenderer {
         return broken;
     }
 
-    public void render(LodWorld w, RenderLevelStageEvent event) {
+    public void render(LodWorld w, RenderLevelStageEvent event, boolean show) {
         if (broken) return;
         if (world != w) {
             world = w;
@@ -123,7 +123,7 @@ public final class LodRenderer {
         int prevActive = GlStateManager._getActiveTexture();
         try {
             if (!ready) setup();
-            draw(event);
+            draw(event, show);
             if (checkedErrors < 5) {
                 checkedErrors++;
                 int err = GL11.glGetError();
@@ -236,6 +236,7 @@ public final class LodRenderer {
         t.indexCount = m.vertices() / 4 * 6;
         t.minY = m.minY();
         t.maxY = m.maxY();
+        t.occupied = m.occupied();
         t.state = Selector.READY;
         world.selectionDirty = true;
     }
@@ -273,7 +274,7 @@ public final class LodRenderer {
         ready = false;
     }
 
-    private void draw(RenderLevelStageEvent event) {
+    private void draw(RenderLevelStageEvent event, boolean show) {
         long t0 = System.nanoTime();
         Minecraft mc = Minecraft.getInstance();
         Camera camera = event.getCamera();
@@ -292,7 +293,7 @@ public final class LodRenderer {
             world.uploads.poll();
             Tile.Pending m = up.pending;
             up.pending = null;
-            if (m != null) {
+            if (m != null && world.tiles.get(up.key) == up) {
                 upload(up, m);
                 uploaded++;
             }
@@ -314,6 +315,13 @@ public final class LodRenderer {
         if (now - lastHouseKeeping > 1000) {
             lastHouseKeeping = now;
             houseKeeping(now);
+            measureCoverage(cx, cz, mc.options.getEffectiveRenderDistance() * 16f);
+        }
+
+        if (!show) {
+            frameDrawn = 0;
+            frameQuads = 0;
+            return;
         }
 
         // our own view: same as the game's, but it reaches much further
@@ -335,7 +343,7 @@ public final class LodRenderer {
         RenderSystem.disableBlend();
 
         float[] fog = RenderSystem.getShaderFogColor();
-        float[] lightNow = FarClient.fogFor(mc);
+        float[] fogRange = FarClient.fogFor(mc);
         float[] sky = lightColours(mc);
 
         frameDrawn = 0;
@@ -343,7 +351,7 @@ public final class LodRenderer {
         Program current = null;
         boolean blending = false;
         float rd = mc.options.getEffectiveRenderDistance() * 16f;
-        float fadeFrom = lightNow[1] * 0.7f;
+        float fadeFrom = fogRange[1] * 0.7f;
         for (int i = 0, n = selected.size(); i < n; i++) {
             Tile t = selected.get(i);
             int level = LodMath.level(t.key);
@@ -351,7 +359,8 @@ public final class LodRenderer {
             double wx = (double) LodMath.tx(t.key) * size, wz = (double) LodMath.tz(t.key) * size;
             float rx = (float) (wx - cx), rz = (float) (wz - cz);
             if (t.vao == 0 || !frustum.visible(rx, (float) (t.minY - cy), rz, rx + size, (float) (t.maxY - cy), rz + size)) continue;
-            boolean overlapsHole = t.distance < rd + 32f;
+            float hx = rx > 0 ? rx : rx + size < 0 ? -(rx + size) : 0, hz = rz > 0 ? rz : rz + size < 0 ? -(rz + size) : 0;
+            boolean overlapsHole = hx * hx + hz * hz < (rd + 32f) * (rd + 32f);
             Program want = overlapsHole ? near : far;
             if (want != current) {
                 current = want;
@@ -360,7 +369,7 @@ public final class LodRenderer {
                 GL20.glUniform3f(want.light, sky[0], sky[1], sky[2]);
                 GL20.glUniform3f(want.glow, sky[3], sky[4], sky[5]);
                 GL20.glUniform3f(want.fogColor, fog[0], fog[1], fog[2]);
-                GL20.glUniform2f(want.fog, lightNow[0], lightNow[1]);
+                GL20.glUniform2f(want.fog, fogRange[0], fogRange[1]);
                 if (want == near) {
                     RenderSystem.activeTexture(GL30.GL_TEXTURE0 + MASK_UNIT);
                     RenderSystem.bindTexture(mask.texture());
@@ -396,6 +405,37 @@ public final class LodRenderer {
         smoothUploadMicros += (uploadNanos / 1000.0 - smoothUploadMicros) * 0.05;
     }
 
+    // How much of the ring just past the real chunks has far terrain to show, 0 to 1. Asked about once a second.
+    private void measureCoverage(double cx, double cz, float rd) {
+        int hits = 0;
+        final int samples = 24;
+        for (int i = 0; i < samples; i++) {
+            double a = i * Math.PI * 2 / samples;
+            int x = (int) Math.floor(cx + Math.cos(a) * (rd + 40));
+            int z = (int) Math.floor(cz + Math.sin(a) * (rd + 40));
+            if (hasDataAt(x, z)) hits++;
+        }
+        coverage = hits / (float) samples;
+    }
+
+    private boolean hasDataAt(int x, int z) {
+        // The finest ready tile there knows best.
+        boolean found = false;
+        for (int level = LodMath.TOP_LEVEL; level >= 0; level--) {
+            Tile t = world.tiles.get(LodMath.key(level, LodMath.tileOfBlock(x, level), LodMath.tileOfBlock(z, level)));
+            if (t == null || t.state != Selector.READY) break;
+            int size = LodMath.tileBlocks(level);
+            int cell = (Math.floorMod(z, size) * 8 / size) * 8 + Math.floorMod(x, size) * 8 / size;
+            found = (t.occupied >>> cell & 1L) != 0;
+            if (!found) break;
+        }
+        return found;
+    }
+
+    public float coverage() {
+        return coverage;
+    }
+
     private void houseKeeping(long now) {
         long cap = FarSettings.vramMb * 1024L * 1024L;
         if (gpuBytes > cap * 0.92) pressure = Math.max(0.45, pressure * 0.93);
@@ -405,6 +445,7 @@ public final class LodRenderer {
         while (it.hasNext()) {
             Tile t = it.next();
             if (t.queued) continue;
+            if (t.state == Selector.EMPTY && t.vao != 0) free(t);
             if (now - t.lastUsed > unusedFor && now - t.lastWanted > unusedFor) {
                 if (t.state == Selector.LOADING) continue;
                 free(t);
@@ -475,7 +516,4 @@ public final class LodRenderer {
         return brokenWhy;
     }
 
-    public static boolean supportsTimers() {
-        return GL33.GL_TIME_ELAPSED != 0;
-    }
 }

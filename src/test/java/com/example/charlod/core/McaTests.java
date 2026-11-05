@@ -434,6 +434,66 @@ class McaTests {
     }
 
     @Test
+    void surfacesSurviveTheTripFromAServer() throws IOException {
+        Names server = new Names();
+        int stone = server.block("minecraft:stone", ""), water = server.block("minecraft:water", "level=0"), sand = server.block("minecraft:sand", ""), flower = server.block("minecraft:poppy", "");
+        int plains = server.biome("minecraft:plains"), ocean = server.biome("minecraft:ocean");
+        SurfacePacket.Names back = new SurfacePacket.Names() {
+            @Override
+            public String blockName(int block) {
+                return server.blocks.entrySet().stream().filter(e -> e.getValue() == block).findFirst().orElseThrow().getKey();
+            }
+
+            @Override
+            public String biomeName(int biome) {
+                return server.biomes.entrySet().stream().filter(e -> e.getValue() == biome).findFirst().orElseThrow().getKey();
+            }
+        };
+        SurfacePacket.Writer w = new SurfacePacket.Writer();
+        w.beginChunk(-3, 900);
+        for (int i = 0; i < SurfacePacket.COLUMNS; i++) {
+            ColumnSampler.Hit h = new ColumnSampler.Hit();
+            if (i % 3 == 0) {
+                h.found = true;
+                h.y = -10 + i;
+                h.block = stone;
+                h.biome = plains;
+                h.over = i % 6 == 0 ? flower : -1;
+            } else if (i % 3 == 1) {
+                h.found = true;
+                h.y = 62;
+                h.block = water;
+                h.biome = ocean;
+                h.depth = 7;
+                h.bed = sand;
+                h.bedBiome = plains;
+            }
+            w.column(h, back);
+        }
+        byte[] packed = w.finish();
+        Names client = new Names();
+        client.block("mod:already_here", ""); // the numbers differ on the other side: names carry it across
+        int[] seen = {0};
+        SurfacePacket.read(packed, client, (x, z, hits) -> {
+            seen[0]++;
+            assertEquals(-3, x);
+            assertEquals(900, z);
+            assertEquals(client.block("minecraft:stone", ""), hits[0].block);
+            assertEquals(-10, hits[0].y);
+            assertEquals(client.block("minecraft:poppy", ""), hits[0].over);
+            assertEquals(-1, hits[3].over);
+            assertTrue(hits[1].found);
+            assertEquals(client.block("minecraft:water", "level=0"), hits[1].block);
+            assertEquals(7, hits[1].depth);
+            assertEquals(client.block("minecraft:sand", ""), hits[1].bed);
+            assertEquals(client.biome("minecraft:ocean"), hits[1].biome);
+            assertEquals(client.biome("minecraft:plains"), hits[1].bedBiome);
+            assertFalse(hits[2].found);
+        });
+        assertEquals(1, seen[0]);
+    }
+
+    @Test
     void anEmptyColumnHasNoData() {
         assertEquals(LodMath.NO_DATA, sample(Integer.MAX_VALUE).height[0]);
     }

@@ -31,6 +31,7 @@ public final class LodWorld {
     final GreedyMesher.Shade shade;
     final int ceilingTop;
     public final McaScanner scanner;
+    final RemoteFeed remote;
 
     final Map<Long, Tile> tiles = new ConcurrentHashMap<>();
     public final ConcurrentLinkedQueue<Tile> uploads = new ConcurrentLinkedQueue<>();
@@ -56,6 +57,7 @@ public final class LodWorld {
         this.shade = level.effects().constantAmbientLight() ? GreedyMesher.Shade.CONSTANT : GreedyMesher.Shade.NORMAL;
         this.ceilingTop = level.dimensionType().hasCeiling() ? level.getMinBuildHeight() + level.dimensionType().logicalHeight() - 1 : Integer.MAX_VALUE;
         this.scanner = regionDir != null ? new McaScanner(this, regionDir, dir.resolve("scan.idx")) : null;
+        this.remote = regionDir == null ? new RemoteFeed(this, level.dimension().location().toString(), dir.resolve("server.idx")) : null;
         int count = Math.max(1, Math.min(4, FarSettings.threads));
         for (int i = 0; i < count; i++) {
             Thread t = new Thread(this::run, "Far View worker " + (i + 1));
@@ -182,6 +184,7 @@ public final class LodWorld {
                     continue;
                 }
                 if (ingestSeen(source, table, columns)) continue;
+                if (remote != null && remote.process(table, columns)) continue;
                 if (store.hasDirty() && System.currentTimeMillis() - lastFlush > 4000) {
                     flushNow();
                     continue;
@@ -229,7 +232,13 @@ public final class LodWorld {
             selectionDirty = true;
             return;
         }
-        t.pending = new Tile.Pending(Arrays.copyOf(mesh.bytes, mesh.byteCount()), mesh.vertices, mesh.minY, mesh.maxY);
+        long occupied = 0;
+        for (int z = 0; z < LodMath.TILE_COLS; z++) {
+            for (int x = 0; x < LodMath.TILE_COLS; x++) {
+                if (d.height[LodMath.cell(x, z)] != LodMath.NO_DATA) occupied |= 1L << ((z / 8) * 8 + x / 8);
+            }
+        }
+        t.pending = new Tile.Pending(Arrays.copyOf(mesh.bytes, mesh.byteCount()), mesh.vertices, mesh.minY, mesh.maxY, occupied);
         uploads.add(t);
     }
 

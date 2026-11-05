@@ -10,11 +10,14 @@ import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.renderer.FogRenderer;
 import net.minecraft.client.server.IntegratedServer;
+import net.minecraft.core.BlockPos;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.effect.MobEffects;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.LivingEntity;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.dimension.DimensionType;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.minecraft.world.level.material.FogType;
 import net.minecraft.world.level.storage.LevelResource;
 import net.minecraftforge.api.distmarker.Dist;
@@ -46,7 +49,10 @@ public final class FarClient {
     private static final LodRenderer RENDERER = new LodRenderer();
     private static final ConcurrentLinkedQueue<String> NOTES = new ConcurrentLinkedQueue<>();
     private static LodWorld world;
-    private static long lastDrawNanos;
+    private static long lastShaderCheck;
+    private static boolean shaderPack, irisMissing, deepUnder;
+    private static Class<?> irisApi;
+    private static int tickCount, lastCaveCheck = -1;
 
     private FarClient() {}
 
@@ -88,7 +94,46 @@ public final class FarClient {
     }
 
     private static boolean drawing() {
-        return FarSettings.enabled && !RENDERER.broken() && world != null;
+        return FarSettings.enabled && !RENDERER.broken() && world != null && !shaderPackOn();
+    }
+
+    // A shader pack draws everything its own way: far terrain drawn by hand would come out wrong, so stand aside while one is on.
+    private static boolean shaderPackOn() {
+        long now = System.currentTimeMillis();
+        if (now - lastShaderCheck > 1000) {
+            lastShaderCheck = now;
+            shaderPack = false;
+            if (irisApi == null && !irisMissing) {
+                try {
+                    irisApi = Class.forName("net.irisshaders.iris.api.v0.IrisApi");
+                } catch (Throwable t) {
+                    irisMissing = true;
+                }
+            }
+            if (irisApi != null) {
+                try {
+                    Object api = irisApi.getMethod("getInstance").invoke(null);
+                    shaderPack = (Boolean) irisApi.getMethod("isShaderPackInUse").invoke(api);
+                } catch (Throwable t) {
+                    irisMissing = true;
+                    irisApi = null;
+                }
+            }
+        }
+        return shaderPack;
+    }
+
+    // Deep in a cave with solid rock all round there is nothing far away to see: don't draw it.
+    private static boolean deepUnderground(Minecraft mc, net.minecraft.client.Camera camera) {
+        if ((tickCount & 15) == 0 && lastCaveCheck != tickCount) {
+            lastCaveCheck = tickCount;
+            ClientLevel level = mc.level;
+            BlockPos at = camera.getBlockPosition();
+            deepUnder = level.dimensionType().hasSkyLight()
+                    && level.getBrightness(LightLayer.SKY, at) == 0
+                    && at.getY() < level.getHeight(Heightmap.Types.WORLD_SURFACE, at.getX(), at.getZ()) - 12;
+        }
+        return deepUnder;
     }
 
     // Far terrain fog: {start, end}. The real chunks get the same numbers, so both fade the same way.
@@ -113,7 +158,7 @@ public final class FarClient {
         if (e.getStage() != RenderLevelStageEvent.Stage.AFTER_SKY || !drawing()) return;
         Minecraft mc = Minecraft.getInstance();
         if (specialView(mc, e.getCamera())) return;
-        RENDERER.render(world, e);
+        RENDERER.render(world, e, !deepUnderground(mc, e.getCamera()));
     }
 
     @net.minecraftforge.eventbus.api.SubscribeEvent
@@ -122,8 +167,10 @@ public final class FarClient {
         Minecraft mc = Minecraft.getInstance();
         if (mc.level == null || specialView(mc, e.getCamera())) return;
         float[] f = fogFor(mc);
-        e.setNearPlaneDistance(f[0]);
-        e.setFarPlaneDistance(f[1]);
+        // Where there is nothing beyond the real chunks yet, the game's own fog stays, or they'd end in a hard edge against the sky.
+        float show = smooth(RENDERER.coverage(), 0.3f, 0.7f);
+        e.setNearPlaneDistance(e.getNearPlaneDistance() + (f[0] - e.getNearPlaneDistance()) * show);
+        e.setFarPlaneDistance(e.getFarPlaneDistance() + (f[1] - e.getFarPlaneDistance()) * show);
         e.setFogShape(FogShape.CYLINDER);
         e.setCanceled(true);
     }
@@ -204,6 +251,11 @@ public final class FarClient {
         }
     }
 
+    private static float smooth(float v, float lo, float hi) {
+        float t = Math.max(0f, Math.min(1f, (v - lo) / (hi - lo)));
+        return t * t * (3f - 2f * t);
+    }
+
     private static String clean(String s) {
         return s.replaceAll("[^a-zA-Z0-9._-]", "_");
     }
@@ -221,6 +273,7 @@ public final class FarClient {
     @net.minecraftforge.eventbus.api.SubscribeEvent
     public static void onTick(TickEvent.ClientTickEvent e) {
         if (e.phase != TickEvent.Phase.END) return;
+        tickCount++;
         Minecraft mc = Minecraft.getInstance();
         String note;
         while ((note = NOTES.poll()) != null) {
@@ -234,6 +287,7 @@ public final class FarClient {
         while (SETTINGS.consumeClick()) {
             if (mc.screen == null) mc.setScreen(new FarScreen(null));
         }
+        if (world != null && world.remote != null) world.remote.tick(mc);
         if (world != null && mc.player != null && !FarSettings.enabled) {
             // Workers still need to know where you are when it's switched back on.
             world.camX = mc.player.getX();
@@ -263,7 +317,8 @@ public final class FarClient {
         if (w.scanner != null) {
             out.add(String.format("Far View scan: %s, regions left %d of %d, chunks %d (%.2f ms each), seen %d", w.scanner.status, w.scanner.regionsLeft, w.scanner.regionsTotal, w.scanner.chunksRead, w.scanner.chunksRead == 0 ? 0.0 : w.scanner.nanosReading / 1e6 / w.scanner.chunksRead, w.seenChunksCount()));
         } else {
-            out.add(String.format("Far View: chunks seen %d", w.seenChunksCount()));
+            RemoteFeed f = w.remote;
+            out.add(String.format("Far View: chunks seen %d, server: %s, regions left %d, got %d chunks in %d KB", w.seenChunksCount(), f.status, f.regionsLeft, f.chunksReceived, f.bytesReceived / 1024));
         }
         return out;
     }

@@ -15,8 +15,6 @@ import net.minecraft.core.Direction;
 import net.minecraft.core.Registry;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
-import net.minecraft.tags.BlockTags;
-import net.minecraft.tags.FluidTags;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.inventory.InventoryMenu;
 import net.minecraft.world.level.BlockAndTintGetter;
@@ -47,7 +45,6 @@ import java.util.concurrent.atomic.AtomicReferenceArray;
 // game's own colour rules, so modded blocks and resource packs just work.
 public final class ColorTable implements McaChunk.Names {
     private static final int TINT_NONE = -1, TINT_FLUID = -2;
-    private static final int GLOW_LEVEL = 12;
 
     private record Avg(float r, float g, float b, float cover) {}
 
@@ -192,7 +189,7 @@ public final class ColorTable implements McaChunk.Names {
         Entry e = new Entry();
         e.state = state;
         try {
-            e.flags = flagsOf(state);
+            e.flags = com.example.charlod.net.BlockRules.flagsOf(state);
             if ((e.flags & BlockTable.AIR) == 0) layers(state, e);
         } catch (Throwable t) {
             e.flags = 0;
@@ -210,27 +207,6 @@ public final class ColorTable implements McaChunk.Names {
     private static boolean hasTint(Layer[] ls) {
         for (Layer l : ls) if (l.tint != TINT_NONE) return true;
         return false;
-    }
-
-    private static int flagsOf(BlockState state) {
-        if (state.isAir()) return BlockTable.AIR;
-        FluidState fluid = state.getFluidState();
-        boolean glow = state.getLightEmission() >= GLOW_LEVEL;
-        if (!fluid.isEmpty() && fluid.is(FluidTags.WATER)) return BlockTable.WATER;
-        RenderShape shape = state.getRenderShape();
-        if (!fluid.isEmpty() && shape == RenderShape.INVISIBLE) return glow || fluid.is(FluidTags.LAVA) ? BlockTable.GLOW : 0;
-        if (shape == RenderShape.INVISIBLE) return BlockTable.AIR;
-        if (state.is(Blocks.SNOW)) return BlockTable.SNOW_LAYER;
-        boolean thin;
-        try {
-            thin = !state.canOcclude() && state.getCollisionShape(EmptyBlockGetter.INSTANCE, BlockPos.ZERO).isEmpty();
-        } catch (Throwable t) {
-            thin = false;
-        }
-        if (thin) return BlockTable.THIN;
-        int flags = glow ? BlockTable.GLOW : 0;
-        if (state.is(BlockTags.LEAVES)) flags |= BlockTable.FOLIAGE;
-        return flags;
     }
 
     private static void layers(BlockState state, Entry e) {

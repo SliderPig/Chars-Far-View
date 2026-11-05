@@ -17,7 +17,9 @@ public final class Tile {
     long lastUsed;
     double distance;
 
-    record Pending(byte[] bytes, int vertices, int minY, int maxY) {}
+    long occupied; // 8 x 8 grid over the tile: which parts have any columns
+
+    record Pending(byte[] bytes, int vertices, int minY, int maxY, long occupied) {}
 
     Tile(long key) {
         this.key = key;
