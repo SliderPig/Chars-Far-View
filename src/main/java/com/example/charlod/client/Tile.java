@@ -14,6 +14,8 @@ public final class Tile {
     // render thread only
     int vao, vbo, indexCount, gpuBytes;
     int minY, maxY;
+    int oldVao, oldVbo, oldBytes, oldIndexCount; // what it looked like before, while the new look dissolves in
+    long fadeStart;
     long lastUsed;
     double distance;
 

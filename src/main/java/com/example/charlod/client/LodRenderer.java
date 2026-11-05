@@ -35,9 +35,10 @@ public final class LodRenderer {
     private static final int MASK_UNIT = 7;
     private static final float NEAR = 4f;
     private static final long UPLOAD_BUDGET_NANOS = 1_500_000L;
+    private static final float FADE_MILLIS = 900f;
 
     private static final class Program {
-        int id, mvp, origin, scale, light, glow, fogColor, fog, mask, maskOrigin, maskScale;
+        int id, mvp, origin, scale, light, glow, fogColor, fog, mask, maskOrigin, maskScale, fade;
 
         void find() {
             mvp = GL20.glGetUniformLocation(id, "uMvp");
@@ -50,6 +51,7 @@ public final class LodRenderer {
             mask = GL20.glGetUniformLocation(id, "uMask");
             maskOrigin = GL20.glGetUniformLocation(id, "uMaskOrigin");
             maskScale = GL20.glGetUniformLocation(id, "uMaskScale");
+            fade = GL20.glGetUniformLocation(id, "uFade");
         }
     }
 
@@ -216,6 +218,17 @@ public final class LodRenderer {
     }
 
     private void upload(Tile t, Tile.Pending m) {
+        if (t.vao != 0 && t.oldVao == 0 && t.indexCount > 0) {
+            // A tile changing its look (real terrain replacing a guess, or a rough copy being refined): keep the old mesh a moment and dissolve between them.
+            t.oldVao = t.vao;
+            t.oldVbo = t.vbo;
+            t.oldBytes = t.gpuBytes;
+            t.oldIndexCount = t.indexCount;
+            t.fadeStart = System.currentTimeMillis();
+            t.vao = 0;
+            t.vbo = 0;
+            t.gpuBytes = 0;
+        }
         if (t.vao == 0) {
             t.vao = GL30.glGenVertexArrays();
             t.vbo = GL15.glGenBuffers();
@@ -236,6 +249,7 @@ public final class LodRenderer {
         GL15.glBufferData(GL15.GL_ARRAY_BUFFER, buf, GL15.GL_STATIC_DRAW);
         MemoryUtil.memFree(buf);
         gpuBytes += m.bytes().length - t.gpuBytes;
+        if (t.oldVao != 0) gpuBytes += 0; // the old mesh is still counted until it goes
         t.gpuBytes = m.bytes().length;
         t.indexCount = m.vertices() / 4 * 6;
         t.minY = m.minY();
@@ -245,7 +259,20 @@ public final class LodRenderer {
         world.selectionDirty = true;
     }
 
+    private void freeOld(Tile t) {
+        if (t.oldVao != 0) {
+            GL30.glDeleteVertexArrays(t.oldVao);
+            GL15.glDeleteBuffers(t.oldVbo);
+            gpuBytes -= t.oldBytes;
+        }
+        t.oldVao = 0;
+        t.oldVbo = 0;
+        t.oldBytes = 0;
+        t.oldIndexCount = 0;
+    }
+
     private void free(Tile t) {
+        freeOld(t);
         if (t.vao != 0) {
             GL30.glDeleteVertexArrays(t.vao);
             GL15.glDeleteBuffers(t.vbo);
@@ -366,7 +393,15 @@ public final class LodRenderer {
             float hx = rx > 0 ? rx : rx + size < 0 ? -(rx + size) : 0, hz = rz > 0 ? rz : rz + size < 0 ? -(rz + size) : 0;
             boolean overlapsHole = hx * hx + hz * hz < (rd + 32f) * (rd + 32f);
             if (overlapsHole && size <= 256 && mask.fullyReal(wx, wz, size)) continue;
-            Program want = overlapsHole ? near : far;
+            float fade = 1f;
+            if (t.oldVao != 0) {
+                fade = (now - t.fadeStart) / FADE_MILLIS;
+                if (fade >= 1f) {
+                    freeOld(t);
+                    fade = 1f;
+                }
+            }
+            Program want = overlapsHole || fade < 1f ? near : far;
             if (want != current) {
                 current = want;
                 GL20.glUseProgram(want.id);
@@ -395,6 +430,16 @@ public final class LodRenderer {
             }
             GL20.glUniform3f(want.origin, rx, (float) -cy, rz);
             GL20.glUniform1f(want.scale, LodMath.blocksPerColumn(level));
+            if (want == near) {
+                if (fade < 1f) {
+                    GL20.glUniform1f(want.fade, -Math.max(fade, 0.001f));
+                    GL30.glBindVertexArray(t.oldVao);
+                    GL11.glDrawElements(GL11.GL_TRIANGLES, t.oldIndexCount, GL11.GL_UNSIGNED_SHORT, 0L);
+                    GL20.glUniform1f(want.fade, Math.max(fade, 0.001f));
+                } else {
+                    GL20.glUniform1f(want.fade, 1f);
+                }
+            }
             GL30.glBindVertexArray(t.vao);
             GL11.glDrawElements(GL11.GL_TRIANGLES, t.indexCount, GL11.GL_UNSIGNED_SHORT, 0L);
             frameDrawn++;
@@ -451,6 +496,7 @@ public final class LodRenderer {
             Tile t = it.next();
             if (t.queued) continue;
             if (t.state == Selector.EMPTY && t.vao != 0) free(t);
+            if (t.oldVao != 0 && now - t.fadeStart > 3000) freeOld(t);
             if (now - t.lastUsed > unusedFor && now - t.lastWanted > unusedFor) {
                 if (t.state == Selector.LOADING) continue;
                 free(t);
