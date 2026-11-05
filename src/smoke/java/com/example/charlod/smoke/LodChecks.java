@@ -398,6 +398,17 @@ public final class LodChecks {
                 });
                 waitTicks = 10;
             }
+            case "move" -> { // move dx dy dz yaw pitch
+                double dx = Double.parseDouble(s[1]), dy = Double.parseDouble(s[2]), dz = Double.parseDouble(s[3]);
+                float yaw = Float.parseFloat(s[4]), pitch = Float.parseFloat(s[5]);
+                server.execute(() -> {
+                    ServerPlayer p = server.getPlayerList().getPlayers().get(0);
+                    p.getAbilities().flying = true;
+                    p.onUpdateAbilities();
+                    p.connection.teleport(p.getX() + dx, p.getY() + dy, p.getZ() + dz, yaw, pitch);
+                });
+                waitTicks = 10;
+            }
             case "up" -> { // up dy yaw pitch: straight up from where you are, from the ground there
                 double dy = Double.parseDouble(s[1]);
                 float yaw = Float.parseFloat(s[2]), pitch = Float.parseFloat(s[3]);
@@ -467,8 +478,8 @@ public final class LodChecks {
                     }
                 }
             }
-            case "fillarea" -> { // fillarea blockX blockZ halfWidthInChunks y block: a big flat plate over real terrain, like a terrain plugin or WorldEdit
-                int bx = Integer.parseInt(s[1]), bz = Integer.parseInt(s[2]), half = Integer.parseInt(s[3]), y = Integer.parseInt(s[4]);
+            case "fillarea" -> { // fillarea blockX blockZ halfWidthInChunks y block: a big flat plate over real terrain, like a terrain plugin or WorldEdit. blockX "here" = where you are.
+                int bx = s[1].equals("here") ? (int) mc.player.getX() : Integer.parseInt(s[1]), bz = s[1].equals("here") ? (int) mc.player.getZ() : Integer.parseInt(s[2]), half = Integer.parseInt(s[3]), y = Integer.parseInt(s[4]);
                 var block = net.minecraftforge.registries.ForgeRegistries.BLOCKS.getValue(new ResourceLocation(s[5])).defaultBlockState();
                 server.execute(() -> {
                     long start = System.nanoTime();
